@@ -1,0 +1,17 @@
+[DLOG_METADATA]
+magic=DLOG
+version=2
+channels=2
+full_scale_voltage=5.000000
+sample_rate=1000
+native_rate=2000
+decimation_factor=2
+start_timestamp_utc=1700000000000
+
+[CH1]
+name=Synthetic_Sine_10Hz
+unit=V
+
+[CH2]
+name=Synthetic_Cos_25Hz
+unit=V

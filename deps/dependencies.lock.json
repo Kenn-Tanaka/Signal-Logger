@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "generator": "Data-Logger Dependency Builder",
+  "target": {
+    "os": "windows",
+    "arch": "x86_64",
+    "compiler": "gcc",
+    "crt": "ucrt"
+  },
+  "dependencies": {
+    "wxWidgets": {
+      "type": "git",
+      "repository": "https://github.com/wxWidgets/wxWidgets.git",
+      "tag": "v3.2.5",
+      "commit": "573e56d432cc2c4b19a27aa5cad3e6045bfc542b",
+      "submodules": false,
+      "license": {
+        "name": "wxWindows Library Licence 3.1",
+        "relative_path": "docs/licence.txt"
+      },
+      "build_system": "cmake",
+      "cmake_options": [
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DwxBUILD_SHARED=OFF",
+        "-DwxBUILD_TESTS=OFF",
+        "-DwxBUILD_SAMPLES=OFF",
+        "-DwxBUILD_DEMOS=OFF",
+        "-DwxBUILD_BENCHMARKS=OFF",
+        "-DwxBUILD_USE_STATIC_RUNTIME=OFF",
+        "-DwxUSE_LIBPNG=builtin",
+        "-DwxUSE_LIBJPEG=builtin",
+        "-DwxUSE_LIBTIFF=builtin",
+        "-DwxUSE_ZLIB=builtin",
+        "-DwxUSE_REGEX=builtin"
+      ],
+      "output_artifacts": {
+        "libraries": [
+          "libwxmsw32u_core.a",
+          "libwxbase32u.a",
+          "libwxpng.a",
+          "libwxjpeg.a",
+          "libwxtiff.a",
+          "libwxzlib.a",
+          "libwxregexu.a"
+        ],
+        "include_dirs": [
+          "include",
+          "lib/gcc_x64_lib/mswu"
+        ]
+      },
+      "patches": []
+    },
+    "portaudio": {
+      "type": "git",
+      "repository": "https://github.com/PortAudio/portaudio.git",
+      "tag": "v19.8-preview",
+      "commit": "d71746635dae088c5d7c808d5f29f0b939458739",
+      "submodules": false,
+      "license": {
+        "name": "PortAudio License (MIT-style)",
+        "relative_path": "LICENSE.txt"
+      },
+      "build_system": "cmake",
+      "cmake_options": [
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DPA_BUILD_SHARED_LIBS=OFF",
+        "-DPA_BUILD_TESTS=OFF",
+        "-DPA_BUILD_EXAMPLES=OFF",
+        "-DPA_USE_WMME=ON",
+        "-DPA_USE_WASAPI=ON",
+        "-DPA_USE_DS=OFF",
+        "-DPA_USE_WDMKS=OFF",
+        "-DPA_USE_WDMKS_DEVICE_INFO=OFF",
+        "-DPA_USE_ASIO=OFF",
+        "-DPA_USE_SKELETON=OFF"
+      ],
+      "output_artifacts": {
+        "libraries": [
+          "libportaudio.a"
+        ],
+        "include_dirs": [
+          "include"
+        ]
+      },
+      "patches": []
+    },
+    "readerwriterqueue": {
+      "type": "git",
+      "repository": "https://github.com/cameron314/readerwriterqueue.git",
+      "tag": "v1.0.6",
+      "commit": "6867b56452352acf077fccd5f6cc7e3a8cfde0fb",
+      "submodules": false,
+      "license": {
+        "name": "Simplified BSD License",
+        "relative_path": "LICENSE.md"
+      },
+      "build_system": "header-only",
+      "cmake_options": [],
+      "output_artifacts": {
+        "headers": [
+          "readerwriterqueue.h",
+          "atomicops.h"
+        ],
+        "include_dirs": [
+          "."
+        ]
+      },
+      "patches": []
+    },
+    "concurrentqueue": {
+      "type": "git",
+      "repository": "https://github.com/cameron314/concurrentqueue.git",
+      "tag": "v1.0.4",
+      "commit": "683b9e31ea15eb69f1b81cc1defc7850d5f20b71",
+      "submodules": false,
+      "license": {
+        "name": "Simplified BSD License",
+        "relative_path": "LICENSE.md"
+      },
+      "build_system": "header-only",
+      "cmake_options": [],
+      "output_artifacts": {
+        "headers": [
+          "concurrentqueue.h",
+          "blockingconcurrentqueue.h",
+          "lightweightsemaphore.h"
+        ],
+        "include_dirs": [
+          "."
+        ]
+      },
+      "notes": "Surveyed across codebase: ReaderWriterQueue is the sole SPSC queue used. Kept for architectural reference.",
+      "patches": []
+    }
+  }
+}

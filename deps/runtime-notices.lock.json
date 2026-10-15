@@ -1,0 +1,10 @@
+{
+  "gcc_version": "13.2.0",
+  "mingw_version": "11.0.1",
+  "notices": [
+    {"file": "gcc-runtime.txt", "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-13.2.0/COPYING.RUNTIME", "sha256": "9D6B43CE4D8DE0C878BF16B54D8E7A10D9BD42B75178153E3AF6A815BDC90F74"},
+    {"file": "gcc-gpl3.txt", "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-13.2.0/COPYING3", "sha256": "8CEB4B9EE5ADEDDE47B31E975C1D90C73AD27B6B165A1DCD80C7C545EB65B903"},
+    {"file": "mingw-runtime.txt", "url": "https://raw.githubusercontent.com/mingw-w64/mingw-w64/c3e587c067a00a561899d49d3e63a659e38802ec/COPYING.MinGW-w64-runtime/COPYING.MinGW-w64-runtime.txt", "sha256": "E9B2DC02451EA29092A1F25FA0F3C07207ED421F1807DFFB0C4E6DCE69DEE7BD"},
+    {"file": "winpthreads.txt", "url": "https://raw.githubusercontent.com/mingw-w64/mingw-w64/c3e587c067a00a561899d49d3e63a659e38802ec/mingw-w64-libraries/winpthreads/COPYING", "sha256": "63263614CDD29F2F93CBA85E992F041B31F9FC7B4033692F31269489A8A1B177"}
+  ]
+}

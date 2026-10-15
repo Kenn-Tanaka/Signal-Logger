@@ -11,6 +11,7 @@ Windows用の最大8チャネル信号ロガーです。PC用オーディオイ�
 - [実装仕様書](SPEC.md)：構成、処理方式、DLOG形式、制約
 - [ライセンス一覧・通知](LICENSES.md)：第三者ソフトウェア許諾・例外条項通知
 - [開発規約](AGENTS.md)：実装時の制約・スレッド設計
+- [ビルダー配布・クリーンビルド](docs/BUILDING.md)：前提環境、配布物の違い、検証手順
 
 ---
 
@@ -40,7 +41,7 @@ Windows用の最大8チャネル信号ロガーです。PC用オーディオイ�
 ## ビルド・テスト・パッケージ化手順
 
 ### 必須ツールチェーン
-- C++17対応コンパイラ: MinGW-w64 GCC 13.2.0 (UCRT x86_64)
+- C++17対応コンパイラ: GCC 13.2.0 / MinGW-w64 11.0.1 (UCRT x86_64)
 - CMake 3.26以上
 - Ninja 1.11以上
 - PowerShell 5.1以上 / Git for Windows
@@ -61,17 +62,25 @@ Windows用の最大8チャネル信号ロガーです。PC用オーディオイ�
 
 - 実行ファイルは `build/` ディレクトリに生成されます（`build/DataLogger.exe`, `build/DlogToCsv.exe`）。
 - CTestにより3つのテストスイート（コアロジック、CSVコンバータ、GUI起動スモークテスト）が実行されます。
+- 実機録音試験は通常実行しません。必要な場合のみ `-HardwareTests -Test` を指定します。
 
 ### 3. リリースパッケージの生成
 ```powershell
 .\scripts\package.ps1
+.\scripts\package-builder.ps1
 ```
 
 - テスト実行・合格の自動検証
 - 静的リンク検証（PE DLL依存検査により非OS DLLの混入を遮断）
-- `dist/DataLogger-v<Version>-win64/` への成果物・公式ライセンス・文書集約
+- バイナリ配布はEXE・利用者向け文書・通知・来歴のみ（SPEC・開発規約は含めない）
 - 依存revisionおよびSHA-256ハッシュを記録した `MANIFEST.txt` の自動生成
 - `dist/DataLogger-v<Version>-win64.zip` アーカイブの出力
+- 別配布の `dist/DataLogger-v<Version>-builder.zip` はソース・スクリプト・開発文書を含み、ライブラリとコンパイラは含まない
+- 同名ZIPは上書きせず停止。別出力先または版番号を指定する
+
+Builder ZIPの検証は `scripts/test-clean-build.ps1 -BuilderZip <ZIPのパス>` で行います。
+毎回新規展開し、既存の依存ソース・ライブラリ・ビルドキャッシュを使いません。
+ホストのOS／コンパイラ等は使用するため、新規Windows VMの検証とは区別します。
 
 ---
 

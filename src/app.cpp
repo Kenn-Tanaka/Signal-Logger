@@ -22,7 +22,7 @@ bool DataLoggerApp::OnInit() {
     }
 
     auto* frame = new MainFrame(
-        wxT("多チャネル・ディジタル音声データロガー (Data-Logger)"),
+        wxT("シグナル・ロガー"),
         wxDefaultPosition,
         wxSize(960, 680)
     );

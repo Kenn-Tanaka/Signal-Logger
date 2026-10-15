@@ -185,6 +185,8 @@ struct LoggerStats {
     uint32_t bufferOverruns = 0;          // ファイルキュー溢れ（目標: 0）
     uint32_t uiFramesDropped = 0;         // UI描画間引き・破棄数
     double currentDurationSec = 0.0;
+    double wallClockDurationSec = 0.0;    // 実時間経過秒数
+    double dataDurationSec = 0.0;         // 記録データ相当秒数 (totalFramesLogged / targetRate)
     bool isLogging = false;
     bool isStreaming = false;
     bool hasDiskError = false;

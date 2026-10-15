@@ -47,7 +47,8 @@ JPEGの謝辞：**This software is based in part on the work of the Independent 
 - concurrentqueueのベンチマーク等にはBoost、TBB、dlib、CDSChecker、Relacy等の別条件のコードが含まれます。上記ライセンスファイルの除外説明を参照してください。
 - wxWidgetsには追加の第三者ソースがあります。例：[PCRE](3rdparty/wxWidgets/3rdparty/pcre/COPYING)、[NanoSVG](3rdparty/wxWidgets/3rdparty/nanosvg/LICENSE.txt)、[Catch](3rdparty/wxWidgets/3rdparty/catch/LICENSE.txt)、[Expat](3rdparty/wxWidgets/src/expat/expat/COPYING)。個別ヘッダの通知も保持してください。
 - Python補助ツールはNumPyを外部環境から利用します。NumPy自体はこのリポジトリの配布物ではありません。Python環境を同梱する場合は、そのPython／NumPyと依存物の通知を追加してください。
-- 静的リンクするGCCのlibgcc／libstdc++、MinGW-w64ランタイムについては、GCC Runtime Library Exception v3.1が適用されます。これにより、本プロジェクトの成果物（完全静的リンクバイナリ）をGPLv3の制約を受けることなく配布することが許諾されています（末尾付録参照）。
+- 静的リンクするGCCのlibgcc／libstdc++については、GCC Runtime Library Exception v3.1が適用されます。これにより、本プロジェクトの成果物（完全静的リンクバイナリ）をGPLv3の制約を受けることなく配布することが許諾されています（末尾付録参照）。
+- MinGW-w64ランタイム（CRTスタートアップ、インポートライブラリ、Windows APIヘッダ）は、Public Domainおよび寛容なパーミッシブ・ライセンス（BSDスタイル／ZPL 2.1）に基づいて提供されています（末尾付録参照）。
 - WindowsのシステムDLL、UCRT、デバイスドライバはOS／提供元に依存します。単体EXEの説明はこれらの不要を意味しません。
 
 ## 配布時の確認事項
@@ -1534,4 +1535,36 @@ The availability of this Exception does not imply any general
 presumption that GCC itself is unaffected by the copyleft
 requirements of the license of GCC.
 ```
+
+### MinGW-w64 Runtime
+
+MinGW-w64 CRT, Headers and Startup Code:
+
+```text
+DISCLAIMER
+This file has no copyright assigned and is placed in the Public Domain.
+This file is part of the mingw-w64 runtime package.
+No warranty is given; refer to the file DISCLAIMER.PD within this package.
+
+MinGW-w64 Runtime API Headers and Libraries:
+Copyright (c) 2009, 2010, 2011, 2012, 2013 by mingw-w64 project
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+```
+
 

@@ -55,7 +55,7 @@ public:
      * @param timeWindowSec 時間幅
      * @param pixelWidth 描画ピクセル幅
      * @param isNewEpoch シーク等による世代更新を伴う要求か
-     * @return 発行された世代番号
+     * @return 発行された世代番号 (epoch)
      */
     uint64_t RequestWindow(double centerTimeSec, double timeWindowSec, int pixelWidth, bool isNewEpoch = false);
 
@@ -67,9 +67,10 @@ public:
     bool PollResult(PlaybackWindowData& outData);
 
     /**
-     * @brief 現在の世代番号を取得
+     * @brief 現在の無効化世代番号 (epoch) を取得
      */
-    uint64_t GetCurrentGeneration() const { return m_currentGeneration.load(); }
+    uint64_t GetCurrentGeneration() const { return m_requestSeq.load(); }
+    uint64_t GetCurrentEpoch() const { return m_currentEpoch.load(); }
 
     /**
      * @brief ワーカーを停止してスレッドを終了
@@ -107,8 +108,8 @@ private:
 
     bool m_hasNewRequest = false;
     PlaybackRequest m_latestRequest;
-    std::atomic<uint64_t> m_currentGeneration{0};
-
+    std::atomic<uint64_t> m_currentEpoch{0};
+    std::atomic<uint64_t> m_requestSeq{0};
 
     std::mutex m_resultMutex;
     bool m_hasNewResult = false;

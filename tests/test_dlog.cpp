@@ -1244,6 +1244,101 @@ void TestPartialFileRecoveryAndParserValidation() {
     std::cout << "  -> .partial recovery trimmed trailing incomplete frame, restored clean DLOG file, and preserved original .partial: PASS!" << std::endl;
 }
 
+void TestPlaybackEpochIsolationAndDurationRetention() {
+    std::cout << "[Test 20] Testing Playback epoch isolation and worker post-stop duration retention..." << std::endl;
+
+    // 1. Worker post-stop duration retention (UI-002)
+    {
+        DataLoggerWorker worker;
+        LoggerConfig config;
+        config.channels = 2;
+        config.nativeSampleRate = 1000.0;
+        config.decimationFactor = 1;
+        config.outputFilePath = "test_duration_retention.bin";
+        config.sampleFormat = SampleFormatType::Float32;
+
+        bool startOk = worker.Start(config);
+        assert(startOk);
+
+        // Enqueue 2 blocks (500 frames total = 0.5s)
+        for (int i = 0; i < 2; ++i) {
+            AudioBlock b;
+            b.channels = 2;
+            b.frameCount = 250;
+            b.sampleRate = 1000.0;
+            b.timestampUtcMs = 1000000;
+            std::fill_n(b.samples, b.channels * b.frameCount, 0.5f);
+            assert(worker.EnqueueBlock(b));
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        worker.Stop();
+
+        LoggerStats postStats = worker.GetStats();
+        assert(postStats.wallClockDurationSec > 0.0);
+        assert(postStats.dataDurationSec >= 0.5);
+        assert(postStats.totalBytesWritten == sizeof(DLogFileHeader) + 500 * 2 * sizeof(float));
+
+        std::error_code ec;
+        std::filesystem::remove("test_duration_retention.bin", ec);
+        std::cout << "  -> Worker post-stop duration retention: PASS!" << std::endl;
+    }
+
+    // 2. Playback epoch isolation (PLAY-002)
+    {
+        std::string testPlayFile = "test_play_epoch.bin";
+        {
+            std::ofstream out(testPlayFile, std::ios::binary | std::ios::trunc);
+            DLogFileHeader h;
+            std::memcpy(h.magic, "DLOG", 4);
+            h.version = 2;
+            h.headerSize = sizeof(DLogFileHeader);
+            h.channels = 1;
+            h.sampleRate = 1000;
+            h.sampleFormat = 0;
+            h.nativeRate = 1000;
+            h.decimationFactor = 1;
+            h.fullScaleVoltage = 1.0;
+            out.write(reinterpret_cast<const char*>(&h), sizeof(h));
+            std::vector<float> data(10000, 0.25f);
+            out.write(reinterpret_cast<const char*>(data.data()), data.size() * sizeof(float));
+        }
+
+        PlaybackLoaderWorker loader;
+        std::string err;
+        assert(loader.OpenFile(testPlayFile, err));
+
+        uint64_t epoch1 = loader.GetCurrentEpoch();
+        assert(epoch1 > 0);
+        loader.RequestWindow(2.0, 1.0, 500, false);
+
+        loader.InvalidateGeneration();
+        uint64_t epoch2 = loader.GetCurrentEpoch();
+        assert(epoch2 > epoch1);
+
+        loader.RequestWindow(5.0, 1.0, 500, false);
+
+        PlaybackWindowData result;
+        bool gotResult = false;
+        for (int retry = 0; retry < 50; ++retry) {
+            if (loader.PollResult(result)) {
+                gotResult = true;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+
+        assert(gotResult);
+        assert(result.epoch == epoch2);
+        assert(std::fabs(result.centerTimeSec - 5.0) < 1e-3);
+        loader.CloseFile();
+
+        std::error_code ec;
+        std::filesystem::remove(testPlayFile, ec);
+        std::cout << "  -> Playback epoch isolation and request invalidation: PASS!" << std::endl;
+    }
+}
+
 int main() {
     std::cout << "=== Running Data-Logger Unit & System Tests ===" << std::endl;
     TestHeaderSpecification();
@@ -1265,6 +1360,7 @@ int main() {
     TestPreviewModeAndTransitions();
     TestPlaybackCoreAndClock();
     TestPartialFileRecoveryAndParserValidation();
+    TestPlaybackEpochIsolationAndDurationRetention();
     std::cout << "\n>>> ALL TESTS PASSED! <<<" << std::endl;
     return 0;
 }

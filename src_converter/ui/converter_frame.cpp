@@ -9,9 +9,13 @@
 #include <wx/dir.h>
 #include <wx/filename.h>
 #include <wx/utils.h>
+#include <wx/progdlg.h>
+#include <wx/app.h>
 #include <iomanip>
 #include <sstream>
 #include <cmath>
+#include <thread>
+#include <atomic>
 
 namespace dlog {
 
@@ -133,7 +137,7 @@ void ConverterFrame::InitUI() {
     auto* mainSizer = new wxBoxSizer(wxVERTICAL);
 
     // --- 上部: ファイル一覧リスト ---
-    auto* listBox = new wxStaticBox(this, wxID_ANY, wxT(" 変換対象 DLOG ファイル一覧（複数選択・ドラッグ＆ドロップ対応） "));
+    auto* listBox = new wxStaticBox(this, wxID_ANY, wxT(" 変換対象ファイル一覧 "));
     auto* listSizer = new wxStaticBoxSizer(listBox, wxVERTICAL);
 
     m_listCtrl = new wxListCtrl(this, wxID_ANY, wxDefaultPosition, wxSize(-1, 200),
@@ -149,11 +153,11 @@ void ConverterFrame::InitUI() {
     listSizer->Add(m_listCtrl, 1, wxEXPAND | wxALL, 5);
 
     auto* listBtnSizer = new wxBoxSizer(wxHORIZONTAL);
-    m_btnAddFiles = new wxButton(this, ID_ADD_FILES, wxT("＋ ファイル追加..."));
-    m_btnAddFolder = new wxButton(this, ID_ADD_FOLDER, wxT("＋ フォルダ追加..."));
-    m_btnRemove = new wxButton(this, ID_REMOVE_SEL, wxT("ー 選択削除"));
-    m_btnClear = new wxButton(this, ID_CLEAR_LIST, wxT("全クリア"));
-    m_btnRecoverPartial = new wxButton(this, ID_RECOVER_PARTIAL, wxT("不完全ファイル復旧 (.partial)..."));
+    m_btnAddFiles = new wxButton(this, ID_ADD_FILES, wxT("ファイル追加..."));
+    m_btnAddFolder = new wxButton(this, ID_ADD_FOLDER, wxT("フォルダ追加..."));
+    m_btnRemove = new wxButton(this, ID_REMOVE_SEL, wxT("選択項目を削除"));
+    m_btnClear = new wxButton(this, ID_CLEAR_LIST, wxT("一覧をクリア"));
+    m_btnRecoverPartial = new wxButton(this, ID_RECOVER_PARTIAL, wxT("不完全ファイル復旧..."));
 
     listBtnSizer->Add(m_btnAddFiles, 0, wxRIGHT, 5);
     listBtnSizer->Add(m_btnAddFolder, 0, wxRIGHT, 5);
@@ -167,7 +171,7 @@ void ConverterFrame::InitUI() {
     mainSizer->Add(listSizer, 1, wxEXPAND | wxALL, 6);
 
     // --- 中部: 出力・変換オプション ---
-    auto* optBox = new wxStaticBox(this, wxID_ANY, wxT(" 変換・出力オプション設定 "));
+    auto* optBox = new wxStaticBox(this, wxID_ANY, wxT(" 変換オプション "));
     auto* optSizer = new wxStaticBoxSizer(optBox, wxVERTICAL);
 
     // 出力先フォルダ
@@ -240,7 +244,7 @@ void ConverterFrame::InitUI() {
 
     // ★ 行数自動分割（ユーザー指定行数） ★
     auto* splitRowSizer = new wxBoxSizer(wxHORIZONTAL);
-    m_chkSplitLines = new wxCheckBox(this, ID_CHK_SPLIT, wxT("指定行数ごとにファイルを自動分割する"));
+    m_chkSplitLines = new wxCheckBox(this, ID_CHK_SPLIT, wxT("指定行数でファイルを自動分割"));
     m_chkSplitLines->SetValue(true);
     splitRowSizer->Add(m_chkSplitLines, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
 
@@ -250,7 +254,7 @@ void ConverterFrame::InitUI() {
                                     wxSP_ARROW_KEYS, 1000, 100000000, 1000000);
     splitRowSizer->Add(m_spinMaxLines, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
 
-    m_btnExcelLimit = new wxButton(this, ID_BTN_EXCEL_LIMIT, wxT("Excel上限 (1,048,576行) に設定"),
+    m_btnExcelLimit = new wxButton(this, ID_BTN_EXCEL_LIMIT, wxT("Excel上限値に設定"),
                                    wxDefaultPosition, wxDefaultSize);
     splitRowSizer->Add(m_btnExcelLimit, 0, wxALIGN_CENTER_VERTICAL, 0);
 
@@ -276,7 +280,7 @@ void ConverterFrame::InitUI() {
 
     // 時間範囲トリミング (MED-03)
     auto* timeRangeRowSizer = new wxBoxSizer(wxHORIZONTAL);
-    m_chkTimeRange = new wxCheckBox(this, ID_CHK_TIME_RANGE, wxT("時間範囲トリミング:"));
+    m_chkTimeRange = new wxCheckBox(this, ID_CHK_TIME_RANGE, wxT("時間範囲でトリミング"));
     m_chkTimeRange->SetValue(false);
     timeRangeRowSizer->Add(m_chkTimeRange, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
 
@@ -294,13 +298,13 @@ void ConverterFrame::InitUI() {
     mainSizer->Add(optSizer, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
 
     // --- 下部: 進捗表示 & アクションボタン ---
-    auto* progBox = new wxStaticBox(this, wxID_ANY, wxT(" 変換進捗・実行 "));
+    auto* progBox = new wxStaticBox(this, wxID_ANY, wxT(" 進捗・実行 "));
     auto* progSizer = new wxStaticBoxSizer(progBox, wxVERTICAL);
 
     auto* gaugeGrid = new wxFlexGridSizer(2, 2, 4, 8);
     gaugeGrid->AddGrowableCol(1, 1);
 
-    m_lblCurrentFile = new wxStaticText(this, wxID_ANY, wxT("現在ファイル (0%):"));
+    m_lblCurrentFile = new wxStaticText(this, wxID_ANY, wxT("ファイル進捗 (0%):"));
     m_gaugeCurrent = new wxGauge(this, wxID_ANY, 1000, wxDefaultPosition, wxSize(-1, 18));
     gaugeGrid->Add(m_lblCurrentFile, 0, wxALIGN_CENTER_VERTICAL);
     gaugeGrid->Add(m_gaugeCurrent, 1, wxEXPAND);
@@ -320,7 +324,7 @@ void ConverterFrame::InitUI() {
     m_btnOpenOutputDir = new wxButton(this, ID_OPEN_OUT_DIR, wxT("出力フォルダを開く"));
     actionRow->Add(m_btnOpenOutputDir, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
 
-    m_btnStart = new wxButton(this, ID_START_CONV, wxT("一括変換開始"), wxDefaultPosition, wxSize(130, 32));
+    m_btnStart = new wxButton(this, ID_START_CONV, wxT("変換開始"), wxDefaultPosition, wxSize(130, 32));
     m_btnStart->SetBackgroundColour(wxColour(30, 160, 60));
     m_btnStart->SetForegroundColour(*wxWHITE);
     wxFont btnFont = m_btnStart->GetFont();
@@ -763,7 +767,7 @@ void ConverterFrame::OnTimer(wxTimerEvent& /*event*/) {
         m_gaugeOverall->SetValue(static_cast<int>(stats.overallProgress * 1000.0));
 
         // ラベル更新
-        m_lblCurrentFile->SetLabel(wxString::Format(wxT("現在ファイル (%d%%):"),
+        m_lblCurrentFile->SetLabel(wxString::Format(wxT("ファイル進捗 (%d%%):"),
                                                     static_cast<int>(stats.currentFileProgress * 100.0)));
         m_lblOverallStatus->SetLabel(wxString::Format(wxT("全体進捗 (%zu/%zu - %d%%):"),
                                                       stats.completedFiles, stats.totalFiles,
@@ -841,19 +845,19 @@ void ConverterFrame::OnTimer(wxTimerEvent& /*event*/) {
         if (wasCanceled) {
             title = wxT("処理中断");
             iconStyle |= wxICON_INFORMATION;
-            msg = wxString::Format(wxT("一括変換処理を中断しました。\n\n変換完了: %zu 件\n未完了: %zu 件"),
+            msg = wxString::Format(wxT("変換処理を中断しました。\n\n変換完了: %zu 件\n未完了: %zu 件"),
                                    completedCount, m_items.size() - completedCount);
             m_lblSpeedAndEta->SetLabel(wxT("変換中断"));
         } else if (errorCount > 0) {
             title = wxT("変換完了（エラーあり）");
             iconStyle |= wxICON_WARNING;
-            msg = wxString::Format(wxT("一括変換処理が終了しましたが、エラーが発生したファイルがあります。\n\n成功: %zu 件\nエラー: %zu 件"),
+            msg = wxString::Format(wxT("変換処理が終了しましたが、エラーが発生したファイルがあります。\n\n成功: %zu 件\nエラー: %zu 件"),
                                    completedCount, errorCount);
             m_lblSpeedAndEta->SetLabel(wxT("エラーありで完了"));
         } else {
             title = wxT("変換完了");
             iconStyle |= wxICON_INFORMATION;
-            msg = wxString::Format(wxT("一括変換処理が正常に完了しました。\n\n成功: %zu 件 / 全 %zu 件"),
+            msg = wxString::Format(wxT("変換が正常に完了しました。\n\n成功: %zu 件 / 全 %zu 件"),
                                    completedCount, m_items.size());
             m_lblSpeedAndEta->SetLabel(wxT("全変換完了"));
         }
@@ -891,7 +895,55 @@ void ConverterFrame::OnRecoverPartial(wxCommandEvent& /*event*/) {
     std::string recoveredPath;
     std::string errMsg;
 
-    if (!DlogReader::RecoverPartialFile(std::string(inputPath.utf8_str()), recoveredPath, errMsg)) {
+    std::atomic<bool> cancelled{false};
+    std::atomic<int> progressPermille{0};
+    std::atomic<bool> done{false};
+    bool success = false;
+
+    wxProgressDialog progressDlg(
+        wxT("ファイル復旧中"),
+        wxT("不完全な一時ファイルから有効データを復旧しています..."),
+        1000,
+        this,
+        wxPD_APP_MODAL | wxPD_AUTO_HIDE | wxPD_CAN_ABORT | wxPD_ELAPSED_TIME | wxPD_REMAINING_TIME
+    );
+
+    std::thread workerThread([&]() {
+        success = DlogReader::RecoverPartialFile(
+            std::string(inputPath.utf8_str()),
+            recoveredPath,
+            errMsg,
+            [&](double ratio) -> bool {
+                if (cancelled.load()) {
+                    return false;
+                }
+                progressPermille.store(static_cast<int>(ratio * 1000.0));
+                return true;
+            }
+        );
+        done.store(true);
+    });
+
+    while (!done.load()) {
+        wxMilliSleep(50);
+        wxTheApp->Yield();
+        int permille = progressPermille.load();
+        if (!progressDlg.Update(std::min(permille, 999))) {
+            cancelled.store(true);
+        }
+    }
+
+    if (workerThread.joinable()) {
+        workerThread.join();
+    }
+
+    if (cancelled.load()) {
+        wxMessageBox(wxT("ファイルの復旧処理がキャンセルされました。"),
+                     wxT("キャンセル"), wxOK | wxICON_INFORMATION, this);
+        return;
+    }
+
+    if (!success) {
         wxMessageBox(wxString::Format(wxT("不完全ファイルの復旧に失敗しました:\n%s"),
                                       wxString::FromUTF8(errMsg.c_str())),
                      wxT("復旧エラー"), wxOK | wxICON_ERROR, this);

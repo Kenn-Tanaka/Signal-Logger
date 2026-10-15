@@ -31,7 +31,7 @@ Windows用の最大8チャネル信号ロガーです。PC用オーディオイ�
 
 ## 動作環境
 
-- **OS**: Windows 10 / 11 x64（Windows 7 SP1以降対応）
+- **OS**: Windows 10 / 11 (64-bit)
 - **オーディオAPI**: MME または WASAPI（PortAudio経由）
 - **ランタイム**: 完全静的リンク（`-static`, `-static-libgcc`, `-static-libstdc++`）。外部DLL不要（Windows標準システムDLLおよびUCRTのみ使用）
 

@@ -249,8 +249,19 @@ void WaveformPanel::OnPaint(wxPaintEvent& /*event*/) {
         plotHeight = height;
     }
 
-    TimeScaleInfo scaleInfo = CalculateTimeScale(m_timeWindowSec);
-    TimeRangeInfo rangeInfo = CalculateTimeRange(m_lastFrameIndex, m_hasData, m_timeWindowSec, m_sampleRate);
+    TimeScaleInfo scaleInfo;
+    TimeRangeInfo rangeInfo;
+    double activeWindowSec = m_timeWindowSec;
+
+    if (m_isPlaybackMode) {
+        if (m_playbackData.timeWindowSec > 0.0) {
+            activeWindowSec = m_playbackData.timeWindowSec;
+        }
+        scaleInfo = CalculateTimeScale(activeWindowSec);
+    } else {
+        scaleInfo = CalculateTimeScale(m_timeWindowSec);
+        rangeInfo = CalculateTimeRange(m_lastFrameIndex, m_hasData, m_timeWindowSec, m_sampleRate);
+    }
 
     int chHeight = plotHeight / numChannels;
 
@@ -320,8 +331,8 @@ void WaveformPanel::OnPaint(wxPaintEvent& /*event*/) {
             }
 
             double centerTime = m_playbackData.centerTimeSec;
-            double leftTime = centerTime - m_timeWindowSec / 2.0;
-            double rightTime = leftTime + m_timeWindowSec;
+            double leftTime = centerTime - activeWindowSec / 2.0;
+            double rightTime = leftTime + activeWindowSec;
             double effectiveFs = (m_playbackData.sampleRate > 0.0) ? m_playbackData.sampleRate : m_sampleRate;
             double totalDuration = (effectiveFs > 0.0) ? (static_cast<double>(m_playbackData.totalFrames) / effectiveFs) : 0.0;
 
@@ -332,9 +343,9 @@ void WaveformPanel::OnPaint(wxPaintEvent& /*event*/) {
             int minX = plotLeft;
             int maxX = plotLeft - 1;
 
-            if (visStartT < visEndT && m_timeWindowSec > 0.0 && totalDuration > 0.0) {
-                double normStart = std::clamp((visStartT - leftTime) / m_timeWindowSec, 0.0, 1.0);
-                double normEnd   = std::clamp((visEndT - leftTime)   / m_timeWindowSec, 0.0, 1.0);
+            if (visStartT < visEndT && activeWindowSec > 0.0 && totalDuration > 0.0) {
+                double normStart = std::clamp((visStartT - leftTime) / activeWindowSec, 0.0, 1.0);
+                double normEnd   = std::clamp((visEndT - leftTime)   / activeWindowSec, 0.0, 1.0);
                 minX = plotLeft + static_cast<int>(std::floor(normStart * plotWidth));
                 maxX = plotLeft + static_cast<int>(std::ceil(normEnd * plotWidth)) - 1;
                 minX = std::clamp(minX, plotLeft, plotLeft + plotWidth - 1);
@@ -390,7 +401,7 @@ void WaveformPanel::OnPaint(wxPaintEvent& /*event*/) {
 
                     for (size_t f = 0; f < nSamples; ++f) {
                         double t = (effectiveFs > 0.0) ? (static_cast<double>(m_playbackData.startFrame + f) / effectiveFs) : 0.0;
-                        double normT = (t - leftTime) / m_timeWindowSec;
+                        double normT = (t - leftTime) / activeWindowSec;
                         if (normT < -0.1 || normT > 1.1) {
                             hasPrev = false;
                             continue;

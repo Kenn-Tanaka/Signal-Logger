@@ -7,17 +7,31 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # ========================================================
 # 依存ライブラリの解決 (.deps/install 優先、3rdparty フォールバック)
 # ========================================================
-if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.deps/install/lib/libportaudio.a")
-    set(DEPS_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.deps/install")
-    message(STATUS "Using dependencies from .deps/install")
+# 依存ディレクトリの指定 (明示指定 -DDLOG_DEPS_DIR または既定 .deps/install)
+if (NOT DLOG_DEPS_DIR)
+    set(DLOG_DEPS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.deps/install")
+endif()
+
+# 検証済み依存セットの判定 (.deps/install/build_completed.json および全必須ライブラリ・setup.h)
+if (EXISTS "${DLOG_DEPS_DIR}/build_completed.json" AND
+    EXISTS "${DLOG_DEPS_DIR}/lib/libportaudio.a" AND
+    EXISTS "${DLOG_DEPS_DIR}/lib/gcc_x64_lib/libwxmsw32u_core.a" AND
+    EXISTS "${DLOG_DEPS_DIR}/lib/gcc_x64_lib/libwxbase32u.a" AND
+    EXISTS "${DLOG_DEPS_DIR}/lib/gcc_x64_lib/mswu/wx/setup.h" AND
+    EXISTS "${DLOG_DEPS_DIR}/include/portaudio.h" AND
+    EXISTS "${DLOG_DEPS_DIR}/include/readerwriterqueue.h")
+    set(DEPS_INSTALL_DIR "${DLOG_DEPS_DIR}")
+    message(STATUS "Using verified official dependencies from ${DEPS_INSTALL_DIR}")
     set(PA_LIB_DIR "${DEPS_INSTALL_DIR}/lib")
     set(PA_INC_DIR "${DEPS_INSTALL_DIR}/include")
     set(WX_LIB_DIR "${DEPS_INSTALL_DIR}/lib/gcc_x64_lib")
     set(WX_INC_DIR "${DEPS_INSTALL_DIR}/include")
     set(WX_SETUP_DIR "${DEPS_INSTALL_DIR}/lib/gcc_x64_lib/mswu")
     set(QUEUE_INC_DIR "${DEPS_INSTALL_DIR}/include")
-elseif (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/portaudio/lib/libportaudio.a")
-    message(STATUS "Using dependencies from 3rdparty/ (local fallback)")
+elseif (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/portaudio/lib/libportaudio.a" AND
+        EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/wxWidgets/lib/gcc_x64_lib/libwxmsw32u_core.a" AND
+        EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/wxWidgets/lib/gcc_x64_lib/mswu/wx/setup.h")
+    message(STATUS "Using dependencies from 3rdparty/ (legacy local fallback)")
     set(PA_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/portaudio/lib")
     set(PA_INC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/portaudio/include")
     set(WX_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/wxWidgets/lib/gcc_x64_lib")
@@ -25,7 +39,7 @@ elseif (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/portaudio/lib/libportaudio.
     set(WX_SETUP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/wxWidgets/lib/gcc_x64_lib/mswu")
     set(QUEUE_INC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/readerwriterqueue")
 else()
-    message(FATAL_ERROR "Dependencies not found. Run scripts/build-deps.ps1 to build dependencies from official sources.")
+    message(FATAL_ERROR "Complete verified dependencies not found at '${DLOG_DEPS_DIR}'. Run scripts/build-deps.ps1 to build dependencies from official sources.")
 endif()
 
 # ========================================================
@@ -204,7 +218,7 @@ target_link_options(test_dlog PRIVATE
     -static-libstdc++
 )
 
-add_test(NAME TestDataLogger COMMAND test_dlog)
+add_test(NAME TestDataLogger COMMAND $<TARGET_FILE:test_dlog>)
 
 # 3.2 コンバータコアテスト (test_converter)
 set(TEST_CONVERTER_SOURCES
@@ -228,8 +242,8 @@ target_link_options(test_converter PRIVATE
     -static-libstdc++
 )
 
-add_test(NAME TestConverter COMMAND test_converter)
+add_test(NAME TestConverter COMMAND $<TARGET_FILE:test_converter>)
 
 # 3.3 GUI 起動・初期化スモークテスト (DataLogger --smoke-test)
-add_test(NAME TestSmokeTest COMMAND DataLogger --smoke-test)
+add_test(NAME TestSmokeTest COMMAND $<TARGET_FILE:DataLogger> --smoke-test)
 set_tests_properties(TestSmokeTest PROPERTIES TIMEOUT 15)

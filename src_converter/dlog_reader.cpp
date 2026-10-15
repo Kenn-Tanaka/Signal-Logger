@@ -4,12 +4,15 @@
 #include <filesystem>
 #include <cmath>
 #include <limits>
+#include <set>
+#include <map>
 
 namespace dlog {
 
 std::vector<ChannelMetadata> DlogReader::LoadCompanionMeta(const std::string& filePath,
                                                           const DLogFileHeader& header,
                                                           std::string* outWarning) {
+    if (outWarning) outWarning->clear();
     const uint32_t channelCount = header.channels;
     std::vector<ChannelMetadata> meta(channelCount);
     for (uint32_t i = 0; i < channelCount; ++i) {
@@ -36,12 +39,63 @@ std::vector<ChannelMetadata> DlogReader::LoadCompanionMeta(const std::string& fi
     bool mismatchDetected = false;
     std::string mismatchReason;
 
+    std::set<std::string> seenMetaKeys;
+    std::set<int> seenChannelSections;
+    std::map<int, std::set<std::string>> seenChKeys;
+
+    auto parseStrictU32 = [](const std::string& s, uint32_t& out) -> bool {
+        if (s.empty()) return false;
+        try {
+            size_t idx = 0;
+            unsigned long v = std::stoul(s, &idx);
+            if (idx != s.size() || v > std::numeric_limits<uint32_t>::max()) return false;
+            out = static_cast<uint32_t>(v);
+            return true;
+        } catch (...) {
+            return false;
+        }
+    };
+
+    auto parseStrictI64 = [](const std::string& s, int64_t& out) -> bool {
+        if (s.empty()) return false;
+        try {
+            size_t idx = 0;
+            long long v = std::stoll(s, &idx);
+            if (idx != s.size()) return false;
+            out = static_cast<int64_t>(v);
+            return true;
+        } catch (...) {
+            return false;
+        }
+    };
+
+    auto parseStrictDouble = [](const std::string& s, double& out) -> bool {
+        if (s.empty()) return false;
+        try {
+            size_t idx = 0;
+            double v = std::stod(s, &idx);
+            if (idx != s.size() || !std::isfinite(v)) return false;
+            out = v;
+            return true;
+        } catch (...) {
+            return false;
+        }
+    };
+
+    bool hasDlogMetadataSection = false;
+
     while (std::getline(in, line)) {
         size_t start = line.find_first_not_of(" \t\r\n");
         if (start == std::string::npos) continue;
         line = line.substr(start);
 
         if (line.rfind("[DLOG_METADATA]", 0) == 0) {
+            if (hasDlogMetadataSection) {
+                mismatchDetected = true;
+                mismatchReason = "重複セクション検出 ([DLOG_METADATA])";
+                break;
+            }
+            hasDlogMetadataSection = true;
             inMetadataSection = true;
             currentCh = -1;
             continue;
@@ -52,10 +106,17 @@ std::vector<ChannelMetadata> DlogReader::LoadCompanionMeta(const std::string& fi
             size_t closeBracket = line.find(']');
             if (closeBracket != std::string::npos) {
                 std::string numStr = line.substr(3, closeBracket - 3);
-                try {
-                    currentCh = std::stoi(numStr) - 1;
-                } catch (...) {
+                uint32_t chNum = 0;
+                if (!parseStrictU32(numStr, chNum) || chNum == 0) {
                     currentCh = -1;
+                } else {
+                    currentCh = static_cast<int>(chNum) - 1;
+                    if (seenChannelSections.count(currentCh) > 0) {
+                        mismatchDetected = true;
+                        mismatchReason = "重複チャネルセクション検出 ([CH" + std::to_string(chNum) + "])";
+                        break;
+                    }
+                    seenChannelSections.insert(currentCh);
                 }
             }
         } else if (inMetadataSection) {
@@ -67,65 +128,71 @@ std::vector<ChannelMetadata> DlogReader::LoadCompanionMeta(const std::string& fi
                 val.erase(0, val.find_first_not_of(" \t\r\n"));
                 val.erase(val.find_last_not_of(" \t\r\n") + 1);
 
+                if (seenMetaKeys.count(key) > 0) {
+                    mismatchDetected = true;
+                    mismatchReason = "重複キー検出 (" + key + ")";
+                    break;
+                }
+                seenMetaKeys.insert(key);
+
                 if (key == "magic") {
                     if (val != "DLOG") {
                         mismatchDetected = true;
                         mismatchReason = "マジックナンバー不一致 (" + val + " != DLOG)";
                     }
                 } else if (key == "version") {
-                    try {
-                        uint32_t ver = static_cast<uint32_t>(std::stoul(val));
-                        if (ver != header.version) {
-                            mismatchDetected = true;
-                            mismatchReason = "フォーマットバージョン不一致 (" + std::to_string(ver) + " != " + std::to_string(header.version) + ")";
-                        }
-                    } catch (...) {
+                    uint32_t ver = 0;
+                    if (!parseStrictU32(val, ver) || (ver != 1 && ver != DLOG_FORMAT_VERSION)) {
                         mismatchDetected = true;
-                        mismatchReason = "versionパース失敗";
+                        mismatchReason = "version不正 (" + val + ")";
+                    } else if (ver != header.version) {
+                        mismatchDetected = true;
+                        mismatchReason = "フォーマットバージョン不一致 (" + std::to_string(ver) + " != " + std::to_string(header.version) + ")";
                     }
                 } else if (key == "channels") {
-                    try {
-                        uint32_t ch = static_cast<uint32_t>(std::stoul(val));
-                        if (ch != channelCount) {
-                            mismatchDetected = true;
-                            mismatchReason = "チャネル数不一致 (" + std::to_string(ch) + " != " + std::to_string(channelCount) + ")";
-                        }
-                    } catch (...) {
+                    uint32_t ch = 0;
+                    if (!parseStrictU32(val, ch) || ch == 0 || ch > MAX_AUDIO_CHANNELS) {
                         mismatchDetected = true;
-                        mismatchReason = "channelsパース失敗";
+                        mismatchReason = "channels不正 (" + val + ")";
+                    } else if (ch != channelCount) {
+                        mismatchDetected = true;
+                        mismatchReason = "チャネル数不一致 (" + std::to_string(ch) + " != " + std::to_string(channelCount) + ")";
                     }
                 } else if (key == "native_rate") {
-                    try {
-                        uint32_t nr = static_cast<uint32_t>(std::stoul(val));
-                        if (header.nativeRate != 0 && nr != header.nativeRate) {
-                            mismatchDetected = true;
-                            mismatchReason = "ネイティブサンプリング周波数不一致 (" + std::to_string(nr) + " != " + std::to_string(header.nativeRate) + ")";
-                        }
-                    } catch (...) {
+                    uint32_t nr = 0;
+                    if (!parseStrictU32(val, nr) || nr == 0) {
                         mismatchDetected = true;
-                        mismatchReason = "native_rateパース失敗";
+                        mismatchReason = "native_rate不正 (" + val + ")";
+                    } else if (header.nativeRate != 0 && nr != header.nativeRate) {
+                        mismatchDetected = true;
+                        mismatchReason = "ネイティブサンプリング周波数不一致 (" + std::to_string(nr) + " != " + std::to_string(header.nativeRate) + ")";
                     }
                 } else if (key == "decimation_factor") {
-                    try {
-                        uint32_t df = static_cast<uint32_t>(std::stoul(val));
-                        if (header.decimationFactor != 0 && df != header.decimationFactor) {
-                            mismatchDetected = true;
-                            mismatchReason = "デシメーション間引き率不一致 (" + std::to_string(df) + " != " + std::to_string(header.decimationFactor) + ")";
-                        }
-                    } catch (...) {
+                    uint32_t df = 0;
+                    if (!parseStrictU32(val, df) || df == 0) {
                         mismatchDetected = true;
-                        mismatchReason = "decimation_factorパース失敗";
+                        mismatchReason = "decimation_factor不正 (" + val + ")";
+                    } else if (header.decimationFactor != 0 && df != header.decimationFactor) {
+                        mismatchDetected = true;
+                        mismatchReason = "デシメーション間引き率不一致 (" + std::to_string(df) + " != " + std::to_string(header.decimationFactor) + ")";
                     }
                 } else if (key == "start_timestamp_utc") {
-                    try {
-                        int64_t ts = std::stoll(val);
-                        if (header.startTimestampUtc != 0 && ts != header.startTimestampUtc) {
-                            mismatchDetected = true;
-                            mismatchReason = "記録開始時刻不一致 (" + std::to_string(ts) + " != " + std::to_string(header.startTimestampUtc) + ")";
-                        }
-                    } catch (...) {
+                    int64_t ts = 0;
+                    if (!parseStrictI64(val, ts)) {
                         mismatchDetected = true;
-                        mismatchReason = "start_timestamp_utcパース失敗";
+                        mismatchReason = "start_timestamp_utc不正 (" + val + ")";
+                    } else if (header.startTimestampUtc != 0 && ts != header.startTimestampUtc) {
+                        mismatchDetected = true;
+                        mismatchReason = "記録開始時刻不一致 (" + std::to_string(ts) + " != " + std::to_string(header.startTimestampUtc) + ")";
+                    }
+                } else if (key == "full_scale_voltage") {
+                    double vfs = 0.0;
+                    if (!parseStrictDouble(val, vfs) || vfs <= 0.0) {
+                        mismatchDetected = true;
+                        mismatchReason = "full_scale_voltage不正 (" + val + ")";
+                    } else if (header.fullScaleVoltage > 0.0 && std::fabs(vfs - header.fullScaleVoltage) > 1e-4) {
+                        mismatchDetected = true;
+                        mismatchReason = "フルスケール電圧不一致 (" + std::to_string(vfs) + " != " + std::to_string(header.fullScaleVoltage) + ")";
                     }
                 }
 
@@ -141,12 +208,27 @@ std::vector<ChannelMetadata> DlogReader::LoadCompanionMeta(const std::string& fi
                 key.erase(key.find_last_not_of(" \t\r\n") + 1);
                 val.erase(0, val.find_first_not_of(" \t\r\n"));
                 val.erase(val.find_last_not_of(" \t\r\n") + 1);
+
+                if (seenChKeys[currentCh].count(key) > 0) {
+                    mismatchDetected = true;
+                    mismatchReason = "CH" + std::to_string(currentCh + 1) + " 重複キー検出 (" + key + ")";
+                    break;
+                }
+                seenChKeys[currentCh].insert(key);
+
                 if (key == "name" && !val.empty()) {
                     meta[currentCh].name = val;
                 } else if (key == "unit" && !val.empty()) {
                     meta[currentCh].unit = val;
                 }
             }
+        }
+    }
+
+    if (!mismatchDetected) {
+        if (hasDlogMetadataSection && seenMetaKeys.count("channels") == 0) {
+            mismatchDetected = true;
+            mismatchReason = "必須メタデータキー欠落: channels";
         }
     }
 
@@ -165,6 +247,39 @@ std::vector<ChannelMetadata> DlogReader::LoadCompanionMeta(const std::string& fi
     return meta;
 }
 
+
+bool DlogReader::ValidateHeader(const DLogFileHeader& header, std::string& errorMsg) {
+    if (std::memcmp(header.magic, "DLOG", 4) != 0) {
+        errorMsg = "マジックナンバーがDLOGではありません";
+        return false;
+    }
+    // v1は既存配布サンプルの読込に限り許容し、新規出力はv2とする。
+    if (header.version != 1 && header.version != DLOG_FORMAT_VERSION) {
+        errorMsg = "未対応のDLOGバージョンです (version=" + std::to_string(header.version) + ")";
+        return false;
+    }
+    if (header.headerSize != sizeof(DLogFileHeader)) {
+        errorMsg = "DLOGヘッダサイズが64バイトではありません";
+        return false;
+    }
+    if (header.channels == 0 || header.channels > MAX_AUDIO_CHANNELS) {
+        errorMsg = "チャネル数が1～8の範囲外です (channels=" + std::to_string(header.channels) + ")";
+        return false;
+    }
+    if (header.sampleFormat != static_cast<uint32_t>(SampleFormatType::Float32)) {
+        errorMsg = "Float32以外のサンプル形式には対応していません";
+        return false;
+    }
+    if (header.sampleRate == 0 || header.nativeRate == 0 || header.decimationFactor == 0) {
+        errorMsg = "サンプルレートまたはデシメーション係数が不正です";
+        return false;
+    }
+    if (std::isnan(header.fullScaleVoltage) || std::isinf(header.fullScaleVoltage) || header.fullScaleVoltage <= 0.0) {
+        errorMsg = "フルスケール電圧が不正です (正の有限値である必要があります)";
+        return false;
+    }
+    return true;
+}
 
 DlogReader::DlogReader() = default;
 
@@ -211,27 +326,9 @@ bool DlogReader::Open(const std::string& filePath) {
             return fail("DLOGヘッダを最後まで読み込めません");
         }
 
-        if (std::memcmp(m_header.magic, "DLOG", 4) != 0) {
-            return fail("マジックナンバーがDLOGではありません");
-        }
-        // v1は既存配布サンプルの読込に限り許容し、新規出力はv2とする。
-        if (m_header.version != 1 && m_header.version != DLOG_FORMAT_VERSION) {
-            return fail("未対応のDLOGバージョンです");
-        }
-        if (m_header.headerSize != sizeof(DLogFileHeader)) {
-            return fail("DLOGヘッダサイズが64バイトではありません");
-        }
-        if (m_header.channels == 0 || m_header.channels > MAX_AUDIO_CHANNELS) {
-            return fail("チャネル数が1～8の範囲外です");
-        }
-        if (m_header.sampleFormat != static_cast<uint32_t>(SampleFormatType::Float32)) {
-            return fail("Float32以外のサンプル形式には対応していません");
-        }
-        if (m_header.sampleRate == 0 || m_header.nativeRate == 0 || m_header.decimationFactor == 0) {
-            return fail("サンプルレートまたはデシメーション係数が不正です");
-        }
-        if (std::isnan(m_header.fullScaleVoltage) || std::isinf(m_header.fullScaleVoltage) || m_header.fullScaleVoltage <= 0.0) {
-            return fail("フルスケール電圧が不正です");
+        std::string validErr;
+        if (!ValidateHeader(m_header, validErr)) {
+            return fail(validErr);
         }
 
         const uint64_t dataBytes = m_fileSizeBytes - sizeof(DLogFileHeader);
@@ -368,7 +465,8 @@ bool DlogReader::InspectFile(const std::string& filePath, BatchItem& item) {
 
 bool DlogReader::RecoverPartialFile(const std::string& partialPath,
                                    std::string& outRecoveredPath,
-                                   std::string& errorMsg) {
+                                   std::string& errorMsg,
+                                   const RecoveryProgressCallback& progressCallback) {
     std::error_code ec;
     std::filesystem::path p = std::filesystem::u8path(partialPath);
     if (!std::filesystem::exists(p, ec) || !std::filesystem::is_regular_file(p, ec)) {
@@ -397,28 +495,7 @@ bool DlogReader::RecoverPartialFile(const std::string& partialPath,
         return false;
     }
 
-    if (std::memcmp(header.magic, "DLOG", 4) != 0) {
-        errorMsg = "マジックナンバーがDLOGではありません";
-        return false;
-    }
-    if (header.version != 1 && header.version != DLOG_FORMAT_VERSION) {
-        errorMsg = "フォーマットバージョンが未対応です (version=" + std::to_string(header.version) + ")";
-        return false;
-    }
-    if (header.headerSize != sizeof(DLogFileHeader)) {
-        errorMsg = "ヘッダサイズが不正です";
-        return false;
-    }
-    if (header.channels == 0 || header.channels > MAX_AUDIO_CHANNELS) {
-        errorMsg = "チャネル数が不正です (1～8)";
-        return false;
-    }
-    if (header.sampleFormat != 0) {
-        errorMsg = "サポートされていないサンプル形式です (Float32のみ対応)";
-        return false;
-    }
-    if (header.sampleRate == 0 || header.nativeRate == 0 || header.decimationFactor == 0) {
-        errorMsg = "サンプリング周波数またはデシメーション係数が不正です";
+    if (!ValidateHeader(header, errorMsg)) {
         return false;
     }
 
@@ -501,15 +578,28 @@ bool DlogReader::RecoverPartialFile(const std::string& partialPath,
         out.write(copyBuf.data(), bytesRead);
         if (!out.good()) {
             out.close();
+            in.close();
             std::filesystem::remove(tempRecPath, ec);
             errorMsg = "復旧データの書き込み中にI/Oエラーが発生しました";
             return false;
         }
         remainingBytes -= static_cast<uint64_t>(bytesRead);
+
+        if (progressCallback && alignedDataBytes > 0) {
+            double ratio = static_cast<double>(alignedDataBytes - remainingBytes) / static_cast<double>(alignedDataBytes);
+            if (!progressCallback(ratio)) {
+                out.close();
+                in.close();
+                std::filesystem::remove(tempRecPath, ec);
+                errorMsg = "ユーザーによって復旧がキャンセルされました";
+                return false;
+            }
+        }
     }
     out.flush();
     if (!out.good() || remainingBytes != 0) {
         out.close();
+        in.close();
         std::filesystem::remove(tempRecPath, ec);
         errorMsg = "復旧データのフラッシュに失敗しました";
         return false;
@@ -525,6 +615,15 @@ bool DlogReader::RecoverPartialFile(const std::string& partialPath,
         errorMsg = "復旧確定ファイルへのリネームに失敗しました: " + ec.message();
         return false;
     }
+
+    // 作成した復旧ファイルの自己検証
+    DlogReader verifier;
+    if (!verifier.Open(targetPath.u8string())) {
+        std::filesystem::remove(targetPath, ec);
+        errorMsg = "復旧したファイルの自己検証に失敗しました: " + verifier.GetLastError();
+        return false;
+    }
+    verifier.Close();
 
     // コンパニオンメタデータ (.meta) の安全なコピー (検証に合格した場合のみコピー)
     std::filesystem::path sourceMeta = p;

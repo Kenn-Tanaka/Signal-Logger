@@ -25,7 +25,7 @@ If controls are disabled, stop the preview first before changing hardware parame
 
 ## 3. Recording Signals
 
-1. If desired, configure channel names, units, and full-scale voltage. Note: modifying unit names is a display label and does not convert physical values. To calibrate voltage scale, feed a known AC reference signal to CH1 during preview and click "Calibrate..." (calibration cannot be changed during active recording).
+1. If desired, configure channel names, units, and full-scale voltage. Note: modifying unit names is a display label and does not convert physical values. To calibrate voltage scale, click "Calibrate...". An interactive dialog opens in Previewing or Stopped state (with automatic prompt to start preview if stopped), allowing you to verify live signal metrics (measured Vpp, peak level, clipping detection) in real time before applying (calibration cannot be changed during active recording).
 2. Under "Target File", specify a path ending in `.bin` or `.dat`.
 3. Click "Start Recording". Pay attention to overwrite warnings if specifying an existing file.
 4. Monitor dropout count and file status during recording. UI rendering skips are distinct from audio recording dropouts.

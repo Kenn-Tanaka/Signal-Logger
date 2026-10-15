@@ -39,11 +39,13 @@ The Anti-Aliasing checkbox enables the digital low-pass filter (17-tap FIR for $
 
 ### Voltage Calibration
 
-1. Feed a known AC reference signal within input limits to CH1, and start preview to confirm a stable waveform.
-2. Ensure waveform hold is disabled and the signal is not clipping.
-3. Click "Calibrate..." and enter the reference signal's Peak-to-Peak voltage [Vpp].
-4. Computes the shared full-scale voltage using the digital Peak-to-Peak measured over the last second on CH1.
-5. If the physical input gain on the audio interface is changed later, recalibration is required.
+1. Connect a known AC reference signal within hardware ratings to an input channel.
+2. Click "Calibrate...". If stopped, a confirmation prompt appears to automatically start preview and begin live signal monitoring (opens immediately if already previewing).
+3. In the calibration dialog, select the target channel (CH 1 to CH N) receiving the reference signal.
+4. Enter the known Peak-to-Peak voltage [Vpp] (maximum minus minimum) of the reference signal (default: 1.000 Vpp).
+5. Inspect the Live Signal Monitor group: verify measured digital Vpp, peak amplitude, and signal health badge (🟢 Good / Stable, 🟡 Low Signal, 🔴 Clipping Warning, ⚪ No Signal). If clipping, reduce the hardware interface input gain knob.
+6. Check the calculated full-scale voltage (±V_FS) and click "Apply" to save.
+7. If physical input gain knobs on the audio interface are modified later, recalibration is required.
 
 Calibration (the "Calibrate..." button and manual Full Scale Voltage entry) is strictly enabled only in Previewing or Stopped states. During active Recording, calibration is completely disabled to prevent changing conversion scale factors mid-recording. Do not enter RMS or single-ended peak values as Vpp. This does not perform per-channel independent calibration or frequency response equalization.
 

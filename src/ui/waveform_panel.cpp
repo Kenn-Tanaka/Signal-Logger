@@ -76,34 +76,34 @@ void WaveformPanel::SetFullScaleVoltage(double vFs) {
     Refresh(false);
 }
 
-double WaveformPanel::MeasureChannelVpp(int channel, double durationSec) {
+SignalStats WaveformPanel::MeasureChannelStats(int channel, double durationSec) {
     std::lock_guard<std::mutex> lock(m_bufferMutex);
-    if (!m_hasData) return 0.0;
-    if (channel < 0 || channel >= static_cast<int>(m_channelBuffers.size())) return 0.0;
-    if (m_bufferCapacity == 0) return 0.0;
+    SignalStats emptyStats;
+    if (!m_hasData) return emptyStats;
+    if (channel < 0 || channel >= static_cast<int>(m_channelBuffers.size())) return emptyStats;
+    if (m_bufferCapacity == 0) return emptyStats;
 
     size_t samplesToInspect = static_cast<size_t>(std::ceil(m_sampleRate * durationSec));
-    if (samplesToInspect == 0) return 0.0;
+    if (samplesToInspect == 0) return emptyStats;
 
     uint64_t endFrame = m_lastFrameIndex;
     uint64_t startFrame = (endFrame + 1 >= samplesToInspect) ? (endFrame + 1 - samplesToInspect) : 0;
 
-    float minVal = 1.0f;
-    float maxVal = -1.0f;
-    bool found = false;
+    std::vector<float> sampleBuf;
+    sampleBuf.reserve(std::min(samplesToInspect, static_cast<size_t>(endFrame - startFrame + 1)));
 
     for (uint64_t f = startFrame; f <= endFrame; ++f) {
         size_t slot = f % m_bufferCapacity;
         if (m_frameIndices[slot] == f) {
-            float val = m_channelBuffers[channel][slot];
-            if (val < minVal) minVal = val;
-            if (val > maxVal) maxVal = val;
-            found = true;
+            sampleBuf.push_back(m_channelBuffers[channel][slot]);
         }
     }
 
-    if (!found || maxVal < minVal) return 0.0;
-    return static_cast<double>(maxVal - minVal);
+    return CalibrationCalculator::AnalyzeSamples(sampleBuf.data(), sampleBuf.size());
+}
+
+double WaveformPanel::MeasureChannelVpp(int channel, double durationSec) {
+    return MeasureChannelStats(channel, durationSec).vpp;
 }
 
 void WaveformPanel::Clear() {

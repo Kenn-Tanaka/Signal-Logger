@@ -104,6 +104,23 @@ enum class StringId {
     CalibrateErrorTitle,
     CalibrateSuccessFormat,
     CalibrateSuccessTitle,
+    CalibrateDialogTitle,
+    CalibrateHeaderDesc,
+    CalibrateChannelLabel,
+    CalibrateTargetVppLabel,
+    CalibrateMonitorGroup,
+    CalibrateMeasuredVpp,
+    CalibratePeakValue,
+    CalibrateCalculatedVfs,
+    CalibrateStatusGood,
+    CalibrateStatusLow,
+    CalibrateStatusClipping,
+    CalibrateStatusNoSignal,
+    CalibrateStartPromptConfirm,
+    CalibrateBtnApply,
+    ButtonCancel,
+    ErrCannotCalibrateWhileRecording,
+    CalibrateSuccessWithChFormat,
 
     // --- ダイアログ: AC結合ガイダンス ---
     AcGuideTitle,
@@ -317,6 +334,9 @@ inline std::string TrFormat(StringId id, const std::string& arg0, const std::str
 inline std::string TrFormat(StringId id, const std::string& arg0, const std::string& arg1, const std::string& arg2) {
     return TrFormat(id, std::vector<std::string>{arg0, arg1, arg2});
 }
+inline std::string TrFormat(StringId id, const std::string& arg0, const std::string& arg1, const std::string& arg2, const std::string& arg3) {
+    return TrFormat(id, std::vector<std::string>{arg0, arg1, arg2, arg3});
+}
 
 inline Language GetUILanguage() {
     return LanguagePreferences::GetCurrentLanguage();
@@ -418,6 +438,12 @@ inline wxString TrFormatWx(StringId id, const std::string& arg0, const std::stri
 }
 inline wxString TrFormatWx(StringId id, const wxString& arg0, const wxString& arg1, const wxString& arg2) {
     return wxString::FromUTF8(TrFormat(id, std::string(arg0.utf8_str()), std::string(arg1.utf8_str()), std::string(arg2.utf8_str())).c_str());
+}
+inline wxString TrFormatWx(StringId id, const std::string& arg0, const wxString& arg1, const wxString& arg2, const wxString& arg3) {
+    return wxString::FromUTF8(TrFormat(id, arg0, std::string(arg1.utf8_str()), std::string(arg2.utf8_str()), std::string(arg3.utf8_str())).c_str());
+}
+inline wxString TrFormatWx(StringId id, const wxString& arg0, const wxString& arg1, const wxString& arg2, const wxString& arg3) {
+    return wxString::FromUTF8(TrFormat(id, std::string(arg0.utf8_str()), std::string(arg1.utf8_str()), std::string(arg2.utf8_str()), std::string(arg3.utf8_str())).c_str());
 }
 inline wxString TrFormatWx(StringId id, const std::vector<std::string>& args) {
     return wxString::FromUTF8(TrFormat(id, args).c_str());

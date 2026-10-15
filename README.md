@@ -1,3 +1,5 @@
+[English](README.en.md)
+
 # Data-Logger Suite
 
 Windows用の最大8チャネル信号ロガーです。PC用オーディオインターフェースを入力フロントエンドとし、波形リアルタイム表示、DLOGバイナリ記録、記録データの波形再生、CSV／TSV変換を提供します。

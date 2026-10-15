@@ -15,6 +15,7 @@
 #include <wx/textctrl.h>
 #include <wx/timer.h>
 #include <wx/dnd.h>
+#include <wx/statbox.h>
 
 #include <vector>
 #include <memory>
@@ -33,6 +34,10 @@ private:
     void UpdateListDisplay();
     void SetControlsEnabled(bool enabled);
     ConversionOptions GatherOptions();
+
+    void ApplyLanguage();
+    void OnLanguageSelectJa(wxCommandEvent& event);
+    void OnLanguageSelectEn(wxCommandEvent& event);
 
     // イベントハンドラ
     void OnAddFiles(wxCommandEvent& event);
@@ -55,6 +60,24 @@ private:
 
     std::unique_ptr<BatchConverterWorker> m_worker;
     std::vector<BatchItem> m_items;
+
+    // 言語メニュー
+    wxMenuItem* m_menuLangJa = nullptr;
+    wxMenuItem* m_menuLangEn = nullptr;
+
+    // 言語切替対象コントロール保持用ポインタ
+    wxStaticBox* m_listBox = nullptr;
+    wxStaticBox* m_optBox = nullptr;
+    wxStaticBox* m_progBox = nullptr;
+    wxStaticText* m_lblOutputDir = nullptr;
+    wxStaticText* m_lblTimeFormat = nullptr;
+    wxStaticText* m_lblDecimation = nullptr;
+    wxStaticText* m_lblDelimiter = nullptr;
+    wxStaticText* m_lblPrecision = nullptr;
+    wxStaticText* m_lblSplitLines = nullptr;
+    wxStaticText* m_lblOutputChannel = nullptr;
+    wxStaticText* m_lblTimeRangeFrom = nullptr;
+    wxStaticText* m_lblTimeRangeTo = nullptr;
 
     // UI コントロール
     wxListCtrl* m_listCtrl = nullptr;
@@ -112,7 +135,9 @@ private:
     wxTimer m_timer;
 
     enum {
-        ID_ADD_FILES = 20001,
+        ID_LANG_JA = 20000,
+        ID_LANG_EN,
+        ID_ADD_FILES,
         ID_ADD_FOLDER,
         ID_REMOVE_SEL,
         ID_CLEAR_LIST,

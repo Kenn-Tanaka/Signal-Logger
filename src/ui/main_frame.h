@@ -47,6 +47,9 @@ private:
         Recording   // 記録中
     };
 
+    void ApplyLanguage();
+    void OnLanguageSelectJa(wxCommandEvent& event);
+    void OnLanguageSelectEn(wxCommandEvent& event);
     void OnDeviceSelect(wxCommandEvent& event);
     void OnRefreshDevices(wxCommandEvent& event);
     void OnChannelSelect(wxCommandEvent& event);
@@ -180,6 +183,31 @@ private:
     };
     RecordingSummary m_lastRecordingSummary;
 
+    // 言語メニュー
+    wxMenuItem* m_menuLangJa = nullptr;
+    wxMenuItem* m_menuLangEn = nullptr;
+
+    // 言語切替対象コントロール保持用ポインタ
+    wxStaticBox* m_ctrlBox = nullptr;
+    wxStaticText* m_lblInputDevice = nullptr;
+    wxStaticText* m_lblChannels = nullptr;
+    wxStaticText* m_lblSampleRate = nullptr;
+    wxStaticText* m_lblDecimation = nullptr;
+    wxStaticText* m_lblVoltageScale = nullptr;
+    wxStaticText* m_lblSavePath = nullptr;
+
+    wxStaticBox* m_playBox = nullptr;
+    wxStaticText* m_lblPlaybackFile = nullptr;
+    wxStaticText* m_lblPlaySpeed = nullptr;
+    wxStaticText* m_lblPlayPosition = nullptr;
+
+    wxStaticText* m_lblWaveOptSettings = nullptr;
+    wxStaticText* m_lblWaveOptGain = nullptr;
+    wxStaticText* m_lblWaveOptHint = nullptr;
+
+    wxStaticBox* m_statusBox = nullptr;
+    bool m_hasErrorStatus = false;
+
     // ステータス表示
     wxStaticText* m_lblStatus = nullptr;
     wxStaticText* m_lblDuration = nullptr;
@@ -194,7 +222,9 @@ private:
     wxTimer m_timer;
 
     enum {
-        ID_DEVICE_CHOICE = 10001,
+        ID_LANG_JA = 10000,
+        ID_LANG_EN,
+        ID_DEVICE_CHOICE,
         ID_REFRESH_DEVICES,
         ID_CHANNEL_CHOICE,
         ID_RATE_CHOICE,

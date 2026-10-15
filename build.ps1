@@ -25,7 +25,7 @@ Invoke-WithSafeMappedDrive $PSScriptRoot {
     if ($LASTEXITCODE -ne 0) { throw 'Application configure failed.' }
     Invoke-NinjaBuildWithRetry $build
     $argsList = @('--test-dir',$build,'--output-on-failure','--no-tests=error','--output-junit',"$build/test-results.xml")
-    if (!$Test) { $argsList += @('-R','TestSmokeTest') }
+    if (!$Test) { $argsList += @('-R','Smoke') }
     & ctest @argsList
     if ($LASTEXITCODE -ne 0) { throw 'CTest failed.' }
     [xml]$results = Get-Content "$build/test-results.xml" -Raw

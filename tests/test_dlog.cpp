@@ -17,6 +17,8 @@
 #include "playback/playback_time_parser.h"
 #include "playback/playback_loader_worker.h"
 #include "dlog_reader.h"
+#include "common/localized_strings.h"
+#include "common/language_preferences.h"
 
 using namespace dlog;
 
@@ -994,7 +996,15 @@ void TestPlaybackCoreAndClock() {
     // 4.2 Create companion .meta file
     {
         std::ofstream meta(std::filesystem::u8path(testMetaPath));
-        meta << "[DLOG_METADATA]\nchannels=2\nfull_scale_voltage=5.0\nsample_rate=2000.0\n\n";
+        meta << "[DLOG_METADATA]\n";
+        meta << "magic=DLOG\n";
+        meta << "version=2\n";
+        meta << "channels=2\n";
+        meta << "full_scale_voltage=5.0\n";
+        meta << "sample_rate=2000\n";
+        meta << "native_rate=2000\n";
+        meta << "decimation_factor=1\n";
+        meta << "start_timestamp_utc=1600000000000\n\n";
         meta << "[CH1]\nname=Voltage_A\nunit=V\n\n";
         meta << "[CH2]\nname=Current_B\nunit=mA\n\n";
     }
@@ -1150,7 +1160,8 @@ void TestPlaybackCoreAndClock() {
     }
     DlogReader readerEmpty;
     assert(!readerEmpty.Open(emptyFramesPath));
-    assert(readerEmpty.GetLastError().find("0フレーム") != std::string::npos);
+    assert(readerEmpty.GetLastErrorInfo().code == StringId::ErrZeroFramesInFile);
+    assert(!readerEmpty.GetLastError().empty());
     std::filesystem::remove(std::filesystem::u8path(emptyFramesPath), ec);
 
     // 4.9 Single frame file test (boundary totalFrames == 1)
@@ -1490,11 +1501,332 @@ void TestDecimatorAntiAliasingToggle() {
     std::cout << "  -> Anti-Aliasing Toggle (FIR & Boxcar vs Point Sampling) PASS!" << std::endl;
 }
 
+void TestLocalizationAndLanguagePreferences() {
+    std::cout << "[Test 20] Testing Localization Integrity & LanguagePreferences..." << std::endl;
+
+    // 1. 翻訳テーブル完全性検証
+    std::string integErr;
+    bool integrityOk = VerifyLocalizationIntegrity(&integErr);
+    if (!integrityOk) {
+        std::cerr << "Localization integrity failure: " << integErr << std::endl;
+    }
+    assert(integrityOk);
+    assert(integErr.empty());
+
+    // 2. 言語コード相互変換
+    assert(std::string(LanguageToCode(Language::Japanese)) == "ja");
+    assert(std::string(LanguageToCode(Language::English)) == "en");
+    assert(LanguageFromCode("ja") == Language::Japanese);
+    assert(LanguageFromCode("en") == Language::English);
+    assert(LanguageFromCode("unknown", Language::Japanese) == Language::Japanese);
+    assert(LanguageFromCode("corrupted", Language::English) == Language::English);
+
+    // 3. 一時設定ファイルを用いた保存・読込・アトミック更新検証
+    const std::string testIniPath = "test_settings_pref.ini";
+    std::filesystem::remove(testIniPath);
+    LanguagePreferences::SetCustomSettingsPathForTesting(testIniPath);
+
+    // デフォルト状態での初期化（CLI指定なし）
+    LanguagePreferences::Initialize("");
+    assert(!LanguagePreferences::HasCliOverride());
+
+    // 英語へ切り替え・保存
+    std::string saveErr;
+    bool saved = LanguagePreferences::SetCurrentLanguage(Language::English, true, &saveErr);
+    assert(saved);
+    assert(saveErr.empty());
+    assert(LanguagePreferences::GetCurrentLanguage() == Language::English);
+    assert(std::filesystem::exists(testIniPath));
+
+    // ファイル内容検証
+    {
+        std::ifstream in(testIniPath);
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        assert(content.find("language=en") != std::string::npos);
+        assert(content.find("schema_version=1") != std::string::npos);
+    }
+
+    // 別インスタンス相当で再読み込み
+    Language loadedLang = Language::Japanese;
+    bool loadOk = LanguagePreferences::LoadFromDisk(loadedLang, testIniPath);
+    assert(loadOk);
+    assert(loadedLang == Language::English);
+
+    // 日本語へ更新
+    saved = LanguagePreferences::SetCurrentLanguage(Language::Japanese, true, &saveErr);
+    assert(saved);
+    assert(LanguagePreferences::GetCurrentLanguage() == Language::Japanese);
+    loadOk = LanguagePreferences::LoadFromDisk(loadedLang, testIniPath);
+    assert(loadOk);
+    assert(loadedLang == Language::Japanese);
+
+    // 4. CLI言語オーバーライドの検証
+    LanguagePreferences::Initialize("en");
+    assert(LanguagePreferences::HasCliOverride());
+    assert(LanguagePreferences::GetCurrentLanguage() == Language::English);
+
+    // CLI指定時はディスクへの保存がスキップされる
+    LanguagePreferences::SetCurrentLanguage(Language::Japanese, true, &saveErr);
+    assert(LanguagePreferences::GetCurrentLanguage() == Language::Japanese);
+    loadOk = LanguagePreferences::LoadFromDisk(loadedLang, testIniPath);
+    assert(loadOk);
+    assert(loadedLang == Language::Japanese); // 前回の保存値のまま
+
+    // 5. CFG-001: 非ASCIIパス、INI破損耐性、書込不可時の非破壊性検証
+    {
+        LanguagePreferences::Initialize(""); // CLIオーバーライド解除
+        std::filesystem::path nonAsciiDir = "test_設定_unicode_path";
+        std::error_code ec;
+        std::filesystem::create_directories(nonAsciiDir, ec);
+        std::filesystem::path unicodeIni = nonAsciiDir / "settings_言語.ini";
+        std::filesystem::remove(unicodeIni, ec);
+
+        LanguagePreferences::SetCustomSettingsPathForTesting(unicodeIni.u8string());
+        std::string err;
+        bool ok = LanguagePreferences::SetCurrentLanguage(Language::English, true, &err);
+        assert(ok);
+        assert(std::filesystem::exists(unicodeIni));
+
+        Language loaded = Language::Japanese;
+        assert(LanguagePreferences::LoadFromDisk(loaded, unicodeIni.u8string()));
+        assert(loaded == Language::English);
+
+        // 破損INI耐性 (不正セクションや構文エラーがあってもクラッシュしない)
+        {
+            std::ofstream out(unicodeIni, std::ios::trunc);
+            out << "[InvalidSection\ncorrupt_data=@@@\nlanguage=alien_martian\n";
+            out.close();
+            Language corruptLoaded = Language::English;
+            LanguagePreferences::LoadFromDisk(corruptLoaded, unicodeIni.u8string());
+        }
+
+        // 書込不可（リードオンリー）時の非破壊アトミック置換検証
+        {
+            // まず正常な日本語設定を書き込む
+            bool saveOk = LanguagePreferences::SaveToDisk(Language::Japanese, &err, unicodeIni.u8string());
+            assert(saveOk);
+            std::string originalContent;
+            {
+                std::ifstream in(unicodeIni);
+                originalContent.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            }
+            assert(originalContent.find("language=ja") != std::string::npos);
+
+            // リードオンリー属性を付与
+            #ifdef _WIN32
+            ::SetFileAttributesW(unicodeIni.wstring().c_str(), FILE_ATTRIBUTE_READONLY);
+            #endif
+
+            // 英語での保存を試みる（失敗するはず）
+            std::string failErr;
+            bool failSave = LanguagePreferences::SaveToDisk(Language::English, &failErr, unicodeIni.u8string());
+            assert(!failSave);
+            assert(!failErr.empty());
+
+            // 【重要 CFG-001】保存失敗時に既存設定ファイルが削除されていないことを確認
+            assert(std::filesystem::exists(unicodeIni));
+            {
+                std::ifstream in(unicodeIni);
+                std::string afterContent((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                assert(afterContent == originalContent); // 旧内容が完全保持されている
+            }
+
+            // 属性を復帰して削除
+            #ifdef _WIN32
+            ::SetFileAttributesW(unicodeIni.wstring().c_str(), FILE_ATTRIBUTE_NORMAL);
+            #endif
+        }
+
+        LanguagePreferences::SetCustomSettingsPathForTesting("");
+        std::filesystem::remove_all(nonAsciiDir, ec);
+    }
+
+    // クリーンアップ
+    LanguagePreferences::SetCustomSettingsPathForTesting("");
+    std::filesystem::remove(testIniPath);
+
+    std::cout << "  -> Localization table integrity and preferences persistence PASS!" << std::endl;
+}
+
+void TestPlaybackSessionRaceAlternatingFiles() {
+    std::cout << "[Test 22] Testing Playback session isolation with alternating 8ch and 1ch files (PLAY-001)..." << std::endl;
+
+    const std::string file8ch = "test_play_race_8ch.bin";
+    const std::string file1ch = "test_play_race_1ch.bin";
+
+    std::error_code ec;
+    std::filesystem::remove(file8ch, ec);
+    std::filesystem::remove(file1ch, ec);
+
+    // 8ch 合成ファイル作成 (10000 frames @ 1000 Hz = 10s)
+    {
+        std::ofstream out(file8ch, std::ios::binary | std::ios::trunc);
+        DLogFileHeader h;
+        std::memcpy(h.magic, "DLOG", 4);
+        h.version = 2;
+        h.headerSize = sizeof(DLogFileHeader);
+        h.channels = 8;
+        h.sampleRate = 1000;
+        h.sampleFormat = 0;
+        h.nativeRate = 1000;
+        h.decimationFactor = 1;
+        h.fullScaleVoltage = 1.0;
+        out.write(reinterpret_cast<const char*>(&h), sizeof(h));
+
+        std::vector<float> frames(8 * 10000);
+        for (size_t f = 0; f < 10000; ++f) {
+            for (int ch = 0; ch < 8; ++ch) {
+                frames[f * 8 + ch] = static_cast<float>(ch + 1) * 0.1f;
+            }
+        }
+        out.write(reinterpret_cast<const char*>(frames.data()), frames.size() * sizeof(float));
+    }
+
+    // 1ch 合成ファイル作成 (10000 frames @ 1000 Hz = 10s)
+    {
+        std::ofstream out(file1ch, std::ios::binary | std::ios::trunc);
+        DLogFileHeader h;
+        std::memcpy(h.magic, "DLOG", 4);
+        h.version = 2;
+        h.headerSize = sizeof(DLogFileHeader);
+        h.channels = 1;
+        h.sampleRate = 1000;
+        h.sampleFormat = 0;
+        h.nativeRate = 1000;
+        h.decimationFactor = 1;
+        h.fullScaleVoltage = 1.0;
+        out.write(reinterpret_cast<const char*>(&h), sizeof(h));
+
+        std::vector<float> frames(10000, 0.99f);
+        out.write(reinterpret_cast<const char*>(frames.data()), frames.size() * sizeof(float));
+    }
+
+    PlaybackLoaderWorker loader;
+    std::string err;
+
+    // --- Phase A: Rawモード (低密度: 500 frames <= 2 * 1000) ---
+    // 読込直前 (stage 0) の同期フックで 1ch への OpenFile を割り込ませる
+    {
+        assert(loader.OpenFile(file8ch, err));
+        uint64_t epoch8 = loader.GetCurrentEpoch();
+        assert(epoch8 > 0);
+
+        std::atomic<bool> hooked{false};
+        loader.SetTestSyncHook([&](int stage, uint64_t epoch) {
+            if (stage == 0 && epoch == epoch8 && !hooked.exchange(true)) {
+                std::string err2;
+                loader.OpenFile(file1ch, err2);
+            }
+        });
+
+        // 8ch raw 要求を発行
+        loader.RequestWindow(1.0, 0.5, 1000, false);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        // 1ch raw 要求を発行
+        uint64_t epoch1 = loader.GetCurrentEpoch();
+        assert(epoch1 > epoch8);
+        loader.RequestWindow(2.0, 0.5, 1000, false);
+
+        PlaybackWindowData result;
+        bool gotResult = false;
+        for (int retry = 0; retry < 50; ++retry) {
+            if (loader.PollResult(result) && result.epoch == epoch1) {
+                gotResult = true;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+
+        assert(gotResult);
+        assert(!result.isAggregated);
+        assert(result.channels == 1);
+        assert(result.rawSamples.size() == 1);
+        assert(result.rawSamples[0].size() > 0);
+        assert(std::fabs(result.rawSamples[0][0] - 0.99f) < 1e-4f);
+    }
+
+    // --- Phase B: Min/Max Envelopeモード (高密度: 5000 frames > 2 * 50) ---
+    // チャンクループ内 (stage 1) の同期フックで交互切替を発生させる
+    {
+        assert(loader.OpenFile(file8ch, err));
+        uint64_t epoch8 = loader.GetCurrentEpoch();
+
+        std::atomic<bool> hooked{false};
+        loader.SetTestSyncHook([&](int stage, uint64_t epoch) {
+            if (stage == 1 && epoch == epoch8 && !hooked.exchange(true)) {
+                std::string err2;
+                loader.OpenFile(file1ch, err2);
+            }
+        });
+
+        // 8ch min/max 要求 (5000 frames, 50 columns)
+        loader.RequestWindow(3.0, 5.0, 50, false);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        uint64_t epoch1 = loader.GetCurrentEpoch();
+        assert(epoch1 > epoch8);
+
+        // 1ch 読込中に 8ch へ再切替
+        std::atomic<bool> hooked1ch{false};
+        loader.SetTestSyncHook([&](int stage, uint64_t epoch) {
+            if (stage == 1 && epoch == epoch1 && !hooked1ch.exchange(true)) {
+                std::string err3;
+                loader.OpenFile(file8ch, err3);
+            }
+        });
+
+        loader.RequestWindow(3.0, 5.0, 50, false);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        uint64_t epoch8_second = loader.GetCurrentEpoch();
+        assert(epoch8_second > epoch1);
+
+        loader.SetTestSyncHook(nullptr); // フック解除
+        loader.RequestWindow(3.0, 5.0, 50, false);
+
+        PlaybackWindowData result;
+        bool gotResult = false;
+        for (int retry = 0; retry < 50; ++retry) {
+            if (loader.PollResult(result) && result.epoch == epoch8_second) {
+                gotResult = true;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+
+        assert(gotResult);
+        assert(result.isAggregated);
+        assert(result.channels == 8);
+        assert(result.minPerChannel.size() == 8);
+        assert(result.maxPerChannel.size() == 8);
+        assert(result.numColumns == 50);
+    }
+
+    loader.CloseFile();
+    std::filesystem::remove(file8ch, ec);
+    std::filesystem::remove(file1ch, ec);
+    std::cout << "  -> Playback session isolation with alternating 8ch/1ch (raw and min/max): PASS!" << std::endl;
+}
+
 int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--hardware-only") {
         TestPreviewModeAndTransitions();
         return 0;
     }
+
+    // TEST-001: 実環境の設定ファイルを記録し、テスト実行中の保存先を完全隔離
+    std::filesystem::path realSettingsPath(LanguagePreferences::GetSettingsFilePath());
+    bool realExisted = std::filesystem::exists(realSettingsPath);
+    std::vector<uint8_t> realSettingsContent;
+    if (realExisted) {
+        std::ifstream in(realSettingsPath, std::ios::binary);
+        realSettingsContent.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    }
+
+    std::filesystem::path isolatedSettings = std::filesystem::temp_directory_path() / "dlog_test_isolated_settings.ini";
+    LanguagePreferences::SetCustomSettingsPathForTesting(isolatedSettings.u8string());
+
     std::cout << "=== Running Data-Logger Unit & System Tests ===" << std::endl;
     TestHeaderSpecification();
     TestDecimatorProcessor();
@@ -1517,6 +1849,24 @@ int main(int argc, char** argv) {
     TestPartialFileRecoveryAndParserValidation();
     TestPlaybackEpochIsolationAndDurationRetention();
     TestDecimatorAntiAliasingToggle();
+    TestLocalizationAndLanguagePreferences();
+    TestPlaybackSessionRaceAlternatingFiles();
+
+    // TEST-001: テスト完了後に実環境の設定ファイルが 1 バイトも変化していないことを厳格検証
+    LanguagePreferences::SetCustomSettingsPathForTesting("");
+    std::error_code ec;
+    std::filesystem::remove(isolatedSettings, ec);
+
+    bool realExistedAfter = std::filesystem::exists(realSettingsPath);
+    assert(realExisted == realExistedAfter);
+    if (realExisted) {
+        std::ifstream in(realSettingsPath, std::ios::binary);
+        std::vector<uint8_t> realSettingsContentAfter((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        assert(realSettingsContent == realSettingsContentAfter);
+    }
+    std::cout << "  -> [TEST-001] Real user settings isolation: 100% untouched verified!" << std::endl;
+
     std::cout << "\n>>> ALL TESTS PASSED! <<<" << std::endl;
     return 0;
 }
+

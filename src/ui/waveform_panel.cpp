@@ -1,5 +1,6 @@
 #include "ui/waveform_panel.h"
 #include "playback/playback_time_parser.h"
+#include "common/localized_strings.h"
 #include <wx/dcbuffer.h>
 #include <wx/graphics.h>
 #include <algorithm>
@@ -127,9 +128,22 @@ void WaveformPanel::SetChannelMetadata(const std::vector<ChannelMetadata>& meta)
     Refresh(false);
 }
 
+void WaveformPanel::SetTimeReferenceMode(TimeReferenceMode mode) {
+    std::lock_guard<std::mutex> lock(m_bufferMutex);
+    m_timeRefMode = mode;
+    Refresh(false);
+}
+
 void WaveformPanel::SetTimeReferenceLabel(const wxString& label) {
     std::lock_guard<std::mutex> lock(m_bufferMutex);
     m_timeReferenceLabel = label;
+    if (label.Contains(wxT("プレビュー")) || label.Lower().Contains(wxT("preview"))) {
+        m_timeRefMode = TimeReferenceMode::PreviewStart;
+    } else if (label.Contains(wxT("記録")) || label.Lower().Contains(wxT("record"))) {
+        m_timeRefMode = TimeReferenceMode::RecordStart;
+    } else if (label.IsEmpty()) {
+        m_timeRefMode = TimeReferenceMode::None;
+    }
     Refresh(false);
 }
 
@@ -673,33 +687,43 @@ void WaveformPanel::OnPaint(wxPaintEvent& /*event*/) {
         wxString centerLabel;
         wxString centerTimeStr;
         if (m_isPlaybackMode) {
-            centerLabel = wxT("中心時刻 (再生位置)");
+            centerLabel = TrWx(StringId::CenterTimePlayback);
             if (m_playbackData.totalFrames > 0) {
                 centerTimeStr = wxString::FromUTF8(FormatPlaybackTime(m_playbackData.centerTimeSec).c_str());
             } else {
                 centerTimeStr = wxT("—");
             }
         } else {
-            if (rangeInfo.hasData && !m_timeReferenceLabel.IsEmpty()) {
-                centerLabel = wxString::Format(wxT("中心時刻 (%s)"), m_timeReferenceLabel);
+            if (rangeInfo.hasData) {
+                switch (m_timeRefMode) {
+                case TimeReferenceMode::PreviewStart:
+                    centerLabel = TrWx(StringId::CenterTimePreview);
+                    break;
+                case TimeReferenceMode::RecordStart:
+                    centerLabel = TrWx(StringId::CenterTimeRecord);
+                    break;
+                default:
+                    if (!m_timeReferenceLabel.IsEmpty()) {
+                        centerLabel = wxString::Format(wxT("%s (%s)"), TrWx(StringId::CenterTimeDefault), m_timeReferenceLabel);
+                    } else {
+                        centerLabel = TrWx(StringId::CenterTimeDefault);
+                    }
+                    break;
+                }
             } else {
-                centerLabel = wxT("中心時刻");
+                centerLabel = TrWx(StringId::CenterTimeDefault);
             }
             centerTimeStr = wxString::FromUTF8(rangeInfo.centerTimeString.c_str());
         }
 
-        wxString infoStr = wxString::Format(
-            wxT("%s: %s    時間スケール: %s    目盛: 中心からの相対時間"),
-            centerLabel,
-            centerTimeStr,
-            wxString::FromUTF8(scaleInfo.scaleString.c_str())
-        );
+        wxString scalePart = TrFormatWx(StringId::ScaleExplanationFormat, scaleInfo.scaleString);
+        wxString infoStr = wxString::Format(wxT("%s: %s    %s"), centerLabel, centerTimeStr, scalePart);
         dc.DrawText(infoStr, plotLeft + 8, plotHeight + 25);
     }
 
     // 読み込み中バッジ (画面左上、再生モード時)
     if (m_isPlaybackMode && m_playbackData.isLoading) {
-        wxString loadStr = wxT("● 読み込み中...");
+        wxString loadStr = TrWx(StringId::BadgeLoading);
         wxFont loadFont(9, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD);
         dc.SetFont(loadFont);
         wxSize textSize = dc.GetTextExtent(loadStr);
@@ -716,7 +740,7 @@ void WaveformPanel::OnPaint(wxPaintEvent& /*event*/) {
 
     // 波形ホールド中バッジ (画面右上、ライブ入力時のみ)
     if (m_isHold && !m_isPlaybackMode) {
-        wxString holdStr = wxT("● HOLD (波形静止中 - 記録継続)");
+        wxString holdStr = TrWx(StringId::BadgeHold);
         wxFont holdFont(9, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD);
         dc.SetFont(holdFont);
         wxSize textSize = dc.GetTextExtent(holdStr);

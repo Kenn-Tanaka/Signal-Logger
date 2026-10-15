@@ -30,9 +30,12 @@ public:
      * @brief 出力ファイルの重複・衝突を検証 (DATA-002)
      * @param items バッチ対象
      * @param options 変換設定
-     * @param errorMsg 衝突検出時の詳細メッセージ
+     * @param outError 衝突検出時の詳細エラー
      * @return 衝突がなければ true
      */
+    static bool CheckCollisions(const std::vector<BatchItem>& items,
+                                const ConversionOptions& options,
+                                LocalizedError& outError);
     static bool CheckCollisions(const std::vector<BatchItem>& items,
                                 const ConversionOptions& options,
                                 std::string& errorMsg);

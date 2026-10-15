@@ -1,6 +1,7 @@
 #pragma once
 
 #include "converter_types.h"
+#include "common/localized_strings.h"
 #include <fstream>
 #include <string>
 #include <vector>
@@ -58,7 +59,8 @@ public:
     /**
      * @brief 直近のオープン・読込失敗理由
      */
-    const std::string& GetLastError() const { return m_lastError; }
+    std::string GetLastError() const { return m_lastErrorInfo.FormatCurrent(); }
+    const LocalizedError& GetLastErrorInfo() const { return m_lastErrorInfo; }
 
     /**
      * @brief 指定フレーム位置へシーク
@@ -92,9 +94,10 @@ public:
     /**
      * @brief DLOGヘッダの厳格な妥当性検証 (Open と RecoverPartialFile で共用)
      * @param header 検証対象ヘッダ
-     * @param errorMsg エラー時の理由
+     * @param outError エラー時の理由 (LocalizedError)
      * @return 正常ヘッダなら true
      */
+    static bool ValidateHeader(const DLogFileHeader& header, LocalizedError& outError);
     static bool ValidateHeader(const DLogFileHeader& header, std::string& errorMsg);
 
     using RecoveryProgressCallback = std::function<bool(double progressRatio)>;
@@ -103,10 +106,14 @@ public:
      * @brief 異常終了等で残された .partial 一時ファイルの回収・修復 (FUNC-001 / DATA-003)
      * @param partialPath 回収対象の .partial ファイルパス
      * @param outRecoveredPath 回収・確定後のファイルパス
-     * @param errorMsg 失敗時のエラーメッセージ
+     * @param outError 失敗時のエラー情報
      * @param progressCallback 進捗報告/キャンセル用コールバック (戻り値falseで中断)
      * @return 正常に回収・修復できたか
      */
+    static bool RecoverPartialFile(const std::string& partialPath,
+                                  std::string& outRecoveredPath,
+                                  LocalizedError& outError,
+                                  const RecoveryProgressCallback& progressCallback = nullptr);
     static bool RecoverPartialFile(const std::string& partialPath,
                                   std::string& outRecoveredPath,
                                   std::string& errorMsg,
@@ -132,7 +139,7 @@ private:
     double m_durationSec = 0.0;
     uint64_t m_currentFrameIndex = 0;
     std::vector<ChannelMetadata> m_channelMetadata;
-    std::string m_lastError;
+    LocalizedError m_lastErrorInfo;
     std::string m_metaWarning;
 };
 

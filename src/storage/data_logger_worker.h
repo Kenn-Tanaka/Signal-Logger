@@ -101,6 +101,9 @@ private:
     std::atomic<uint64_t> m_totalBytesWritten{0};
     std::atomic<uint32_t> m_bufferOverruns{0};
     int64_t m_startTimeMs = 0;
+    int64_t m_stopTimeMs = 0;
+    double m_lastWallClockDurationSec = 0.0;
+    double m_lastDataDurationSec = 0.0;
 };
 
 } // namespace dlog

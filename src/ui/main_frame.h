@@ -168,10 +168,13 @@ private:
 
     struct RecordingSummary {
         bool hasSummary = false;
+        bool isError = false;
         double durationSec = 0.0;
+        double dataDurationSec = 0.0;
         uint64_t totalBytesWritten = 0;
         uint32_t totalOverruns = 0;
         std::string finalPath;
+        std::string recoveryPath;
     };
     RecordingSummary m_lastRecordingSummary;
 

@@ -48,6 +48,9 @@ bool DataLoggerWorker::Start(const LoggerConfig& config) {
     m_startTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()
     ).count();
+    m_stopTimeMs = 0;
+    m_lastWallClockDurationSec = 0.0;
+    m_lastDataDurationSec = 0.0;
 
     // キューの初期化（残存データのクリア）
     m_queue = std::make_unique<moodycamel::ReaderWriterQueue<AudioBlock>>(QUEUE_CAPACITY);
@@ -194,6 +197,17 @@ void DataLoggerWorker::StopInternal(bool commitOutput) {
     m_powerGuard.Release();
     m_isRunning.store(false);
 
+    m_stopTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()
+    ).count();
+    m_lastWallClockDurationSec = (m_stopTimeMs > m_startTimeMs)
+        ? static_cast<double>(m_stopTimeMs - m_startTimeMs) / 1000.0
+        : 0.0;
+    double targetFs = m_config.getTargetSampleRate();
+    m_lastDataDurationSec = (targetFs > 0.0)
+        ? static_cast<double>(m_totalFramesLogged.load(std::memory_order_relaxed)) / targetFs
+        : 0.0;
+
     if (commitOutput && !m_hasDiskError.load(std::memory_order_relaxed)) {
         if (!FinalizeOutput()) {
             m_hasDiskError.store(true, std::memory_order_relaxed);
@@ -307,11 +321,22 @@ LoggerStats DataLoggerWorker::GetStats() const {
     stats.isLogging = m_isRunning.load(std::memory_order_relaxed);
     stats.hasDiskError = m_hasDiskError.load(std::memory_order_relaxed);
 
+    double targetFs = m_config.getTargetSampleRate();
     if (stats.isLogging && m_startTimeMs > 0) {
         auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()
         ).count();
-        stats.currentDurationSec = static_cast<double>(nowMs - m_startTimeMs) / 1000.0;
+        stats.wallClockDurationSec = (nowMs > m_startTimeMs)
+            ? static_cast<double>(nowMs - m_startTimeMs) / 1000.0
+            : 0.0;
+        stats.dataDurationSec = (targetFs > 0.0)
+            ? static_cast<double>(stats.totalFramesLogged) / targetFs
+            : 0.0;
+        stats.currentDurationSec = stats.wallClockDurationSec;
+    } else {
+        stats.wallClockDurationSec = m_lastWallClockDurationSec;
+        stats.dataDurationSec = m_lastDataDurationSec;
+        stats.currentDurationSec = m_lastWallClockDurationSec;
     }
     return stats;
 }

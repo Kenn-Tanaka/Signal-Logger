@@ -4,6 +4,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <functional>
 
 namespace dlog {
 
@@ -89,15 +90,27 @@ public:
     static bool InspectFile(const std::string& filePath, BatchItem& item);
 
     /**
-     * @brief 異常終了等で残された .partial 一時ファイルの回収・修復 (FUNC-001)
+     * @brief DLOGヘッダの厳格な妥当性検証 (Open と RecoverPartialFile で共用)
+     * @param header 検証対象ヘッダ
+     * @param errorMsg エラー時の理由
+     * @return 正常ヘッダなら true
+     */
+    static bool ValidateHeader(const DLogFileHeader& header, std::string& errorMsg);
+
+    using RecoveryProgressCallback = std::function<bool(double progressRatio)>;
+
+    /**
+     * @brief 異常終了等で残された .partial 一時ファイルの回収・修復 (FUNC-001 / DATA-003)
      * @param partialPath 回収対象の .partial ファイルパス
      * @param outRecoveredPath 回収・確定後のファイルパス
      * @param errorMsg 失敗時のエラーメッセージ
+     * @param progressCallback 進捗報告/キャンセル用コールバック (戻り値falseで中断)
      * @return 正常に回収・修復できたか
      */
     static bool RecoverPartialFile(const std::string& partialPath,
                                   std::string& outRecoveredPath,
-                                  std::string& errorMsg);
+                                  std::string& errorMsg,
+                                  const RecoveryProgressCallback& progressCallback = nullptr);
 
     /**
      * @brief コンパニオンメタデータ (.meta) の読込と整合性検証 (DATA-001)

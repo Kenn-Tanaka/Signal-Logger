@@ -7,6 +7,7 @@
 #include <fstream>
 #include <vector>
 #include <cmath>
+#include <limits>
 #include <filesystem>
 
 #include "converter_types.h"
@@ -1032,6 +1033,122 @@ void TestData003NonDestructiveRecovery() {
     SafeRemoveFile(secondRecovered + ".meta");
 }
 
+void TestValidateHeaderAndStrictMetadata() {
+    std::cout << "[Test 16] Testing DlogReader::ValidateHeader and strict LoadCompanionMeta..." << std::endl;
+
+    // 1. ValidateHeader testing
+    {
+        DLogFileHeader h;
+        std::memcpy(h.magic, "DLOG", 4);
+        h.version = DLOG_FORMAT_VERSION;
+        h.headerSize = sizeof(DLogFileHeader);
+        h.channels = 2;
+        h.sampleRate = 22050;
+        h.sampleFormat = 0;
+        h.nativeRate = 44100;
+        h.decimationFactor = 2;
+        h.fullScaleVoltage = 1.0;
+
+        std::string err;
+        assert(DlogReader::ValidateHeader(h, err));
+
+        // Voltage = 0.0 -> invalid
+        h.fullScaleVoltage = 0.0;
+        assert(!DlogReader::ValidateHeader(h, err));
+
+        // Voltage = -5.0 -> invalid
+        h.fullScaleVoltage = -5.0;
+        assert(!DlogReader::ValidateHeader(h, err));
+
+        // Voltage = NaN -> invalid
+        h.fullScaleVoltage = std::numeric_limits<double>::quiet_NaN();
+        assert(!DlogReader::ValidateHeader(h, err));
+
+        // Voltage = Inf -> invalid
+        h.fullScaleVoltage = std::numeric_limits<double>::infinity();
+        assert(!DlogReader::ValidateHeader(h, err));
+
+        h.fullScaleVoltage = 10.0; // restore
+
+        // Channels = 0 -> invalid
+        h.channels = 0;
+        assert(!DlogReader::ValidateHeader(h, err));
+
+        // Channels = 9 -> invalid
+        h.channels = 9;
+        assert(!DlogReader::ValidateHeader(h, err));
+
+        h.channels = 2; // restore
+
+        // Bad magic -> invalid
+        std::memcpy(h.magic, "WAV ", 4);
+        assert(!DlogReader::ValidateHeader(h, err));
+    }
+    std::cout << "  -> ValidateHeader edge cases (voltage, channels, magic): PASS!" << std::endl;
+
+    // 2. LoadCompanionMeta strict validation
+    {
+        DLogFileHeader h;
+        std::memcpy(h.magic, "DLOG", 4);
+        h.version = 2;
+        h.headerSize = sizeof(DLogFileHeader);
+        h.channels = 2;
+        h.sampleRate = 22050;
+        h.sampleFormat = 0;
+        h.nativeRate = 44100;
+        h.decimationFactor = 2;
+        h.startTimestampUtc = 1791510000000;
+        h.fullScaleVoltage = 1.0;
+
+        std::string metaFile = "test_strict_meta.bin.meta";
+
+        // Case A: Missing required key (channels missing)
+        {
+            std::ofstream out(metaFile, std::ios::trunc);
+            out << "[DLOG_METADATA]\nmagic=DLOG\nversion=2\nstart_timestamp_utc=1791510000000\n"
+                << "full_scale_voltage=1.0\nsample_rate=22050\nnative_rate=44100\ndecimation_factor=2\n";
+            out.close();
+
+            std::string warn;
+            auto result = DlogReader::LoadCompanionMeta("test_strict_meta.bin", h, &warn);
+            assert(!warn.empty()); // Must produce warning
+            assert(result.size() == 2);
+            assert(result[0].name == "CH1"); // Fallback to default
+        }
+
+        // Case B: Duplicate key
+        {
+            std::ofstream out(metaFile, std::ios::trunc);
+            out << "[DLOG_METADATA]\nmagic=DLOG\nversion=2\nchannels=2\nchannels=3\n"
+                << "start_timestamp_utc=1791510000000\nfull_scale_voltage=1.0\nsample_rate=22050\n"
+                << "native_rate=44100\ndecimation_factor=2\n";
+            out.close();
+
+            std::string warn;
+            auto result = DlogReader::LoadCompanionMeta("test_strict_meta.bin", h, &warn);
+            assert(!warn.empty());
+            assert(result[0].name == "CH1");
+        }
+
+        // Case C: Non-numeric trailing garbage
+        {
+            std::ofstream out(metaFile, std::ios::trunc);
+            out << "[DLOG_METADATA]\nmagic=DLOG\nversion=2_junk\nchannels=2\n"
+                << "start_timestamp_utc=1791510000000\nfull_scale_voltage=1.0\nsample_rate=22050\n"
+                << "native_rate=44100\ndecimation_factor=2\n";
+            out.close();
+
+            std::string warn;
+            auto result = DlogReader::LoadCompanionMeta("test_strict_meta.bin", h, &warn);
+            assert(!warn.empty());
+            assert(result[0].name == "CH1");
+        }
+
+        SafeRemoveFile(metaFile);
+    }
+    std::cout << "  -> LoadCompanionMeta strict key, duplicate, and format checks: PASS!" << std::endl;
+}
+
 int main() {
     std::cout << "=== Running DlogToCsv Unit & Integration Tests ===" << std::endl;
     TestReaderAndInspection();
@@ -1049,6 +1166,7 @@ int main() {
     TestData002AcceptanceCriteria();
     TestData001HeaderVerification();
     TestData003NonDestructiveRecovery();
+    TestValidateHeaderAndStrictMetadata();
     std::cout << "\n>>> ALL CONVERTER TESTS PASSED! <<<" << std::endl;
     return 0;
 }

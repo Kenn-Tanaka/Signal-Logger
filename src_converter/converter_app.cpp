@@ -9,7 +9,7 @@ bool ConverterApp::OnInit() {
     }
 
     auto* frame = new ConverterFrame(
-        wxT("DLOG to CSV 一括変換ツール (DLOG Batch Converter)"),
+        wxT("シグナル・コンバータ"),
         wxDefaultPosition,
         wxSize(920, 720)
     );

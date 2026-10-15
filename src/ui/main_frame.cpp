@@ -225,10 +225,10 @@ void MainFrame::InitUI() {
     m_txtVoltageScale = new wxTextCtrl(m_panelLive, ID_VOLTAGE_TXT, wxT("1.0"), wxDefaultPosition, wxSize(60, -1));
     row2Sizer->Add(m_txtVoltageScale, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
 
-    m_btnCalibrate = new wxButton(m_panelLive, ID_CALIBRATE_BTN, wxT("CAL校正..."), wxDefaultPosition, wxSize(75, -1));
+    m_btnCalibrate = new wxButton(m_panelLive, ID_CALIBRATE_BTN, wxT("校正..."), wxDefaultPosition, wxSize(65, -1));
     row2Sizer->Add(m_btnCalibrate, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
 
-    m_btnAcGuide = new wxButton(m_panelLive, ID_AC_GUIDE_BTN, wxT("AC結合(DC遮断)についてℹ"), wxDefaultPosition, wxDefaultSize);
+    m_btnAcGuide = new wxButton(m_panelLive, ID_AC_GUIDE_BTN, wxT("AC結合について..."), wxDefaultPosition, wxDefaultSize);
     m_btnAcGuide->SetToolTip(wxT("PCオーディオI/Fのハードウェア回路特性（直流遮断・AC結合）に関するガイダンスを表示します"));
     row2Sizer->Add(m_btnAcGuide, 0, wxALIGN_CENTER_VERTICAL, 0);
 
@@ -257,8 +257,8 @@ void MainFrame::InitUI() {
     m_btnPreview->SetFont(btnFont);
     row3Sizer->Add(m_btnPreview, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
 
-    // 録音開始/停止ボタン
-    m_btnStartStop = new wxButton(m_panelLive, ID_START_STOP_BTN, wxT("ロギング開始"), wxDefaultPosition, wxSize(120, 32));
+    // 記録開始/停止ボタン
+    m_btnStartStop = new wxButton(m_panelLive, ID_START_STOP_BTN, wxT("記録開始"), wxDefaultPosition, wxSize(120, 32));
     m_btnStartStop->SetBackgroundColour(wxColour(30, 160, 60));
     m_btnStartStop->SetForegroundColour(*wxWHITE);
     m_btnStartStop->SetFont(btnFont);
@@ -297,7 +297,7 @@ void MainFrame::InitUI() {
     ppFont.SetWeight(wxFONTWEIGHT_BOLD);
     m_btnPlayPause->SetFont(ppFont);
     playRow2->Add(m_btnPlayPause, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
-    m_btnPlayLast = new wxButton(m_panelPlayback, ID_PLAY_LAST_BTN, wxT("末尾 ⏭"), wxDefaultPosition, wxSize(68, 28));
+    m_btnPlayLast = new wxButton(m_panelPlayback, ID_PLAY_LAST_BTN, wxT("⏭ 末尾"), wxDefaultPosition, wxSize(68, 28));
     playRow2->Add(m_btnPlayLast, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
 
     playRow2->Add(new wxStaticText(m_panelPlayback, wxID_ANY, wxT("再生速度:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
@@ -319,7 +319,7 @@ void MainFrame::InitUI() {
     playRow2->Add(m_txtPlayTime, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
     m_btnSeekTime = new wxButton(m_panelPlayback, ID_PLAY_SEEK_BTN, wxT("移動"), wxDefaultPosition, wxSize(48, -1));
     playRow2->Add(m_btnSeekTime, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
-    m_lblTotalDuration = new wxStaticText(m_panelPlayback, wxID_ANY, wxT("/ 総時間 00:00:00.000"));
+    m_lblTotalDuration = new wxStaticText(m_panelPlayback, wxID_ANY, wxT("/ 00:00:00.000"));
     playRow2->Add(m_lblTotalDuration, 0, wxALIGN_CENTER_VERTICAL, 0);
 
     playSizer->Add(playRow2, 0, wxEXPAND | wxALL, 3);
@@ -338,7 +338,7 @@ void MainFrame::InitUI() {
 
     // 波形描画オプションバー (時間幅・ゲイン)
     m_waveOptSizer = new wxBoxSizer(wxHORIZONTAL);
-    m_waveOptSizer->Add(new wxStaticText(this, wxID_ANY, wxT("波形プレビュー設定:  時間幅:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_waveOptSizer->Add(new wxStaticText(this, wxID_ANY, wxT("波形表示設定:  時間幅:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
 
     wxArrayString timeWinArr;
     int defaultTimeWinSel = 10; // 2.0s
@@ -368,7 +368,7 @@ void MainFrame::InitUI() {
     m_btnHold->SetToolTip(wxT("ディスクへのデータ記録は継続したまま、画面上の波形描画のみを一時停止（静止）します"));
     m_waveOptSizer->Add(m_btnHold, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
 
-    auto* lblHint = new wxStaticText(this, wxID_ANY, wxT("(※録音中もリアルタイム調整可能)"));
+    auto* lblHint = new wxStaticText(this, wxID_ANY, wxT("(※記録中も変更可能)"));
     lblHint->SetForegroundColour(wxColour(130, 140, 150));
     m_waveOptSizer->Add(lblHint, 0, wxALIGN_CENTER_VERTICAL, 0);
 
@@ -379,7 +379,7 @@ void MainFrame::InitUI() {
     mainSizer->Add(m_waveformPanel, 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
 
     // --- 下部: ステータスパネル ---
-    auto* statusBox = new wxStaticBox(this, wxID_ANY, wxT(" ロギング・ステータスモニタ "));
+    auto* statusBox = new wxStaticBox(this, wxID_ANY, wxT(" 記録ステータス "));
     auto* statusSizer = new wxStaticBoxSizer(statusBox, wxHORIZONTAL);
 
     m_lblStatus = new wxStaticText(this, wxID_ANY, wxT("状態: 停止中"));
@@ -387,13 +387,13 @@ void MainFrame::InitUI() {
     m_lblStatus->SetFont(boldFont);
     statusSizer->Add(m_lblStatus, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 25);
 
-    m_lblDuration = new wxStaticText(this, wxID_ANY, wxT("録音時間: 00:00:00"));
+    m_lblDuration = new wxStaticText(this, wxID_ANY, wxT("記録時間: 00:00:00"));
     statusSizer->Add(m_lblDuration, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 25);
 
     m_lblFileSize = new wxStaticText(this, wxID_ANY, wxT("ファイルサイズ: 0.00 MB"));
     statusSizer->Add(m_lblFileSize, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 25);
 
-    m_lblOverruns = new wxStaticText(this, wxID_ANY, wxT("データ欠落(Overrun): 0 件"));
+    m_lblOverruns = new wxStaticText(this, wxID_ANY, wxT("データ欠落: 0 件"));
     m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
     statusSizer->Add(m_lblOverruns, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 25);
 
@@ -628,8 +628,8 @@ void MainFrame::OnVoltageChange(wxCommandEvent& /*event*/) {
 
 void MainFrame::OnCalibrate(wxCommandEvent& /*event*/) {
     wxString vppStr = wxGetTextFromUser(
-        wxT("入力端子に接続されているCAL基準信号の Peak-to-Peak 電圧 [Vpp] を入力してください:\n(例: 1.000 Vpp の交流信号 / テスト波形)"),
-        wxT("CAL信号による電圧自動校正"),
+        wxT("入力端子に接続されている基準信号の Peak-to-Peak 電圧 [Vpp] を入力してください:\n(例: 1.000 Vpp の交流信号)"),
+        wxT("基準信号による電圧校正"),
         wxT("1.000"),
         this
     );
@@ -658,9 +658,9 @@ void MainFrame::OnCalibrate(wxCommandEvent& /*event*/) {
     m_waveformPanel->SetFullScaleVoltage(calVfs);
 
     wxMessageBox(
-        wxString::Format(wxT("CAL校正が完了しました！\n\n実測デジタル振幅: %.4f\n目標 CAL 電圧: %.3f Vpp\n算出したフルスケール電圧: ±%.4f V"),
+        wxString::Format(wxT("電圧校正が完了しました。\n\n実測デジタル振幅: %.4f\n目標基準電圧: %.3f Vpp\n算出したフルスケール電圧: ±%.4f V"),
                          measuredVpp, targetVpp, calVfs),
-        wxT("CAL校正完了"), wxOK | wxICON_INFORMATION, this
+        wxT("校正完了"), wxOK | wxICON_INFORMATION, this
     );
 }
 
@@ -843,7 +843,7 @@ void MainFrame::OnGainSelect(wxCommandEvent& /*event*/) {
 }
 
 void MainFrame::OnBrowseFile(wxCommandEvent& /*event*/) {
-    wxFileDialog saveFileDialog(this, wxT("ロギング保存先ファイルを選択"), wxEmptyString,
+    wxFileDialog saveFileDialog(this, wxT("記録保存先ファイルを選択"), wxEmptyString,
                                 m_txtFilePath->GetValue(),
                                 wxT("データログファイル (*.bin;*.dat)|*.bin;*.dat|すべてのファイル (*.*)|*.*"),
                                 wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
@@ -976,9 +976,9 @@ bool MainFrame::StartPreview() {
     m_waveformPanel->SetChannelCount(config.channels);
     m_waveformPanel->Clear();
 
-    m_lblDuration->SetLabel(wxT("録音時間: --:--:--"));
+    m_lblDuration->SetLabel(wxT("記録時間: --:--:--"));
     m_lblFileSize->SetLabel(wxT("ファイルサイズ: 保存なし"));
-    m_lblOverruns->SetLabel(wxT("プレビュー入力欠落: 0 件 (正常)"));
+    m_lblOverruns->SetLabel(wxT("プレビュー欠落: 0 件 (正常)"));
     m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
     m_lblUiDrops->SetLabel(wxT("UI描画スキップ: 0 件"));
 
@@ -1017,7 +1017,7 @@ bool MainFrame::StartRecording() {
 
     if (wxFileExists(filePath)) {
         int ans = wxMessageBox(
-            wxString::Format(wxT("指定されたファイルは既に存在します:\n%s\n\n上書きしてロギングを開始しますか？"), filePath),
+            wxString::Format(wxT("指定されたファイルは既に存在します:\n%s\n\n上書きして記録を開始しますか？"), filePath),
             wxT("ファイル上書き確認"),
             wxYES_NO | wxNO_DEFAULT | wxICON_WARNING,
             this);
@@ -1101,9 +1101,9 @@ bool MainFrame::StartRecording() {
     m_waveformPanel->SetChannelCount(config.channels);
     m_waveformPanel->Clear();
 
-    m_lblDuration->SetLabel(wxT("録音時間: 00:00:00"));
+    m_lblDuration->SetLabel(wxT("記録時間: 00:00:00"));
     m_lblFileSize->SetLabel(wxT("ファイルサイズ: 0.00 MB"));
-    m_lblOverruns->SetLabel(wxT("データ欠落(Overrun): 0 件 (正常)"));
+    m_lblOverruns->SetLabel(wxT("データ欠落: 0 件 (正常)"));
     m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
     m_lblUiDrops->SetLabel(wxT("UI描画スキップ: 0 件"));
 
@@ -1214,13 +1214,16 @@ void MainFrame::StopRecording(bool isError, wxString errorMsg, bool resumePrevie
     }
 
 
-    if (!isError) {
-        m_lastRecordingSummary.hasSummary = true;
-        m_lastRecordingSummary.durationSec = loggerStats.currentDurationSec;
-        m_lastRecordingSummary.totalBytesWritten = loggerStats.totalBytesWritten;
-        m_lastRecordingSummary.totalOverruns = loggerStats.bufferOverruns + audioStats.bufferOverruns;
-        m_lastRecordingSummary.finalPath = m_hasActiveConfig ? m_activeConfig.outputFilePath : "";
+    m_lastRecordingSummary.hasSummary = true;
+    m_lastRecordingSummary.isError = isError;
+    m_lastRecordingSummary.durationSec = loggerStats.wallClockDurationSec > 0.0 ? loggerStats.wallClockDurationSec : loggerStats.currentDurationSec;
+    m_lastRecordingSummary.dataDurationSec = loggerStats.dataDurationSec;
+    m_lastRecordingSummary.totalBytesWritten = loggerStats.totalBytesWritten;
+    m_lastRecordingSummary.totalOverruns = loggerStats.bufferOverruns + audioStats.bufferOverruns;
+    m_lastRecordingSummary.finalPath = m_hasActiveConfig ? m_activeConfig.outputFilePath : "";
+    m_lastRecordingSummary.recoveryPath = m_loggerWorker->GetRecoveryFilePath();
 
+    if (!isError) {
         // 次回録音用にファイル名を自動インクリメント (ディレクトリパスを維持)
         wxFileName curFn(m_txtFilePath->GetValue());
         wxString dir = curFn.GetPath();
@@ -1236,7 +1239,7 @@ void MainFrame::StopRecording(bool isError, wxString errorMsg, bool resumePrevie
     m_hasActiveConfig = false;
 
     if (isError && !errorMsg.IsEmpty()) {
-        wxMessageBox(errorMsg, wxT("ロギングエラー"), wxOK | wxICON_ERROR, this);
+        wxMessageBox(errorMsg, wxT("記録エラー"), wxOK | wxICON_ERROR, this);
     }
 
     // プレビュー再開の試行 (エラー時でもデバイスが健全かつresumePreviewが要求されていれば再開)
@@ -1253,8 +1256,29 @@ void MainFrame::StopRecording(bool isError, wxString errorMsg, bool resumePrevie
         m_lblStatus->SetLabel(wxT("状態: エラー停止"));
         m_lblStatus->SetForegroundColour(wxColour(220, 40, 40));
     } else {
-        m_lblStatus->SetLabel(wxT("状態: 待機中 (完了)"));
+        m_lblStatus->SetLabel(wxT("状態: 記録完了"));
         m_lblStatus->SetForegroundColour(wxColour(120, 120, 120));
+    }
+
+    if (m_lastRecordingSummary.hasSummary) {
+        int tot = static_cast<int>(m_lastRecordingSummary.durationSec);
+        int h = tot / 3600;
+        int m = (tot % 3600) / 60;
+        int s = tot % 60;
+        double mb = static_cast<double>(m_lastRecordingSummary.totalBytesWritten) / (1024.0 * 1024.0);
+        m_lblDuration->SetLabel(wxString::Format(wxT("前回記録: %02d:%02d:%02d (%.2f MB)"), h, m, s, mb));
+        if (m_lastRecordingSummary.isError) {
+            m_lblFileSize->SetLabel(wxT("ファイル: エラー中断 (.partial保持)"));
+        } else {
+            m_lblFileSize->SetLabel(wxString::Format(wxT("保存完了: %.2f MB"), mb));
+        }
+        if (m_lastRecordingSummary.totalOverruns > 0) {
+            m_lblOverruns->SetLabel(wxString::Format(wxT("前回記録欠落: %u 件 [警告]"), m_lastRecordingSummary.totalOverruns));
+            m_lblOverruns->SetForegroundColour(wxColour(220, 40, 40));
+        } else {
+            m_lblOverruns->SetLabel(wxT("前回記録欠落: 0 件 (正常)"));
+            m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
+        }
     }
 }
 
@@ -1283,7 +1307,7 @@ void MainFrame::UpdateControlStates() {
 
         m_btnPreview->SetLabel(wxT("プレビュー開始"));
         m_btnPreview->SetBackgroundColour(wxColour(0, 120, 180));
-        m_btnStartStop->SetLabel(wxT("ロギング開始"));
+        m_btnStartStop->SetLabel(wxT("記録開始"));
         m_btnStartStop->SetBackgroundColour(wxColour(30, 160, 60));
 
         if (!m_lblStatus->GetLabel().Contains(wxT("エラー"))) {
@@ -1308,10 +1332,10 @@ void MainFrame::UpdateControlStates() {
         m_btnPreview->SetBackgroundColour(wxColour(220, 120, 30));
 
         m_btnStartStop->Enable();
-        m_btnStartStop->SetLabel(wxT("ロギング開始"));
+        m_btnStartStop->SetLabel(wxT("記録開始"));
         m_btnStartStop->SetBackgroundColour(wxColour(30, 160, 60));
 
-        m_lblStatus->SetLabel(wxT("状態: プレビュー中・保存なし"));
+        m_lblStatus->SetLabel(wxT("状態: プレビュー中"));
         m_lblStatus->SetForegroundColour(wxColour(30, 120, 200));
     } else if (m_appState == AppState::Recording) {
         // 記録中: 入力設定およびファイル設定をすべてロック
@@ -1331,7 +1355,7 @@ void MainFrame::UpdateControlStates() {
         m_btnPreview->SetBackgroundColour(wxColour(0, 120, 180));
 
         m_btnStartStop->Enable();
-        m_btnStartStop->SetLabel(wxT("ロギング停止"));
+        m_btnStartStop->SetLabel(wxT("記録停止"));
         m_btnStartStop->SetBackgroundColour(wxColour(220, 40, 40));
 
         m_lblStatus->SetLabel(wxT("状態: 記録中"));
@@ -1389,7 +1413,7 @@ void MainFrame::OnTimer(wxTimerEvent& /*event*/) {
         // 1. オーディオデバイス切断・ストリーム異常停止の監視（USB切断等: プレビュー・記録共通）
         if (m_audioMgr->HasDeviceError()) {
             if (m_appState == AppState::Recording) {
-                StopRecording(true, wxT("オーディオデバイスの切断またはストリーム異常停止を検知しました。\n安全のためロギングを停止し、ファイルを保存しました。"), false /* resumePreview = false */);
+                StopRecording(true, wxT("オーディオデバイスの切断またはストリーム異常停止を検知しました。\n安全のため記録を停止し、ファイルを保存しました。"), false /* resumePreview = false */);
             } else {
                 StopPreview(true, wxT("オーディオデバイスの切断またはストリーム異常停止を検知しました。\nプレビューを停止しました。"));
             }
@@ -1399,7 +1423,7 @@ void MainFrame::OnTimer(wxTimerEvent& /*event*/) {
 
         // 2. ディスク書き込みエラーの監視（記録中のみ）
         if (m_appState == AppState::Recording && m_loggerWorker->HasDiskError()) {
-            StopRecording(true, wxT("ディスク書き込みエラーが発生しました（ディスク容量不足またはドライブ切断）。\nロギングを安全停止しました。"), true /* attempt resume preview if device ok */);
+            StopRecording(true, wxT("ディスク書き込みエラーが発生しました（ディスク容量不足またはドライブ切断）。\n記録を安全停止しました。"), true /* attempt resume preview if device ok */);
             return;
         }
 
@@ -1432,7 +1456,7 @@ void MainFrame::OnTimer(wxTimerEvent& /*event*/) {
             int hours = totalSec / 3600;
             int mins = (totalSec % 3600) / 60;
             int secs = totalSec % 60;
-            m_lblDuration->SetLabel(wxString::Format(wxT("録音時間: %02d:%02d:%02d"), hours, mins, secs));
+            m_lblDuration->SetLabel(wxString::Format(wxT("記録時間: %02d:%02d:%02d"), hours, mins, secs));
 
             // ファイルサイズ (MB / GB)
             double mb = static_cast<double>(loggerStats.totalBytesWritten) / (1024.0 * 1024.0);
@@ -1445,10 +1469,10 @@ void MainFrame::OnTimer(wxTimerEvent& /*event*/) {
             // 欠落（Overrun）監視
             uint32_t totalOverruns = loggerStats.bufferOverruns + audioStats.bufferOverruns;
             if (totalOverruns == 0) {
-                m_lblOverruns->SetLabel(wxT("データ欠落(Overrun): 0 件 (正常)"));
+                m_lblOverruns->SetLabel(wxT("データ欠落: 0 件 (正常)"));
                 m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
             } else {
-                m_lblOverruns->SetLabel(wxString::Format(wxT("データ欠落(Overrun): %u 件 [警告]"), totalOverruns));
+                m_lblOverruns->SetLabel(wxString::Format(wxT("データ欠落: %u 件 [警告]"), totalOverruns));
                 m_lblOverruns->SetForegroundColour(wxColour(220, 40, 40));
             }
         } else if (m_appState == AppState::Previewing) {
@@ -1458,24 +1482,24 @@ void MainFrame::OnTimer(wxTimerEvent& /*event*/) {
                 int m = (tot % 3600) / 60;
                 int s = tot % 60;
                 double mb = static_cast<double>(m_lastRecordingSummary.totalBytesWritten) / (1024.0 * 1024.0);
-                m_lblDuration->SetLabel(wxString::Format(wxT("前回録音: %02d:%02d:%02d (%.2f MB)"), h, m, s, mb));
-                m_lblFileSize->SetLabel(wxT("状態: プレビュー中 (保存なし)"));
+                m_lblDuration->SetLabel(wxString::Format(wxT("前回記録: %02d:%02d:%02d (%.2f MB)"), h, m, s, mb));
+                m_lblFileSize->SetLabel(wxT("ファイルサイズ: 保存なし"));
             } else {
-                m_lblDuration->SetLabel(wxT("録音時間: --:--:--"));
+                m_lblDuration->SetLabel(wxT("記録時間: --:--:--"));
                 m_lblFileSize->SetLabel(wxT("ファイルサイズ: 保存なし"));
             }
 
             uint32_t previewOverruns = audioStats.bufferOverruns;
             if (previewOverruns == 0) {
                 if (m_lastRecordingSummary.hasSummary && m_lastRecordingSummary.totalOverruns > 0) {
-                    m_lblOverruns->SetLabel(wxString::Format(wxT("プレビュー欠落: 0 件 (前回録音欠落: %u 件)"), m_lastRecordingSummary.totalOverruns));
+                    m_lblOverruns->SetLabel(wxString::Format(wxT("プレビュー欠落: 0 件 (前回記録欠落: %u 件)"), m_lastRecordingSummary.totalOverruns));
                     m_lblOverruns->SetForegroundColour(wxColour(220, 120, 20));
                 } else {
-                    m_lblOverruns->SetLabel(wxT("プレビュー入力欠落: 0 件 (正常)"));
+                    m_lblOverruns->SetLabel(wxT("プレビュー欠落: 0 件 (正常)"));
                     m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
                 }
             } else {
-                m_lblOverruns->SetLabel(wxString::Format(wxT("プレビュー入力欠落: %u 件 [警告]"), previewOverruns));
+                m_lblOverruns->SetLabel(wxString::Format(wxT("プレビュー欠落: %u 件 [警告]"), previewOverruns));
                 m_lblOverruns->SetForegroundColour(wxColour(220, 40, 40));
             }
         }
@@ -1487,7 +1511,7 @@ void MainFrame::OnTimer(wxTimerEvent& /*event*/) {
 
 void MainFrame::OnClose(wxCloseEvent& event) {
     if (m_appState == AppState::Recording) {
-        int res = wxMessageBox(wxT("ロギングが実行中です。停止して終了しますか？"),
+        int res = wxMessageBox(wxT("記録が実行中です。停止して終了しますか？"),
                                wxT("確認"), wxYES_NO | wxICON_QUESTION, this);
         if (res != wxYES) {
             event.Veto();
@@ -1511,7 +1535,7 @@ void MainFrame::OnModeChanging(wxBookCtrlEvent& event) {
     if (m_isInitializing) return;
 
     if (m_appState == AppState::Recording) {
-        wxMessageBox(wxT("ロギング実行中はモードを切り替えることはできません。\n先にロギングを停止してください。"),
+        wxMessageBox(wxT("記録実行中はモードを切り替えることはできません。\n先に記録を停止してください。"),
                      wxT("モード切替不可"), wxOK | wxICON_WARNING, this);
         event.Veto();
         return;
@@ -1546,7 +1570,7 @@ void MainFrame::OnModeChanged(wxBookCtrlEvent& event) {
                 m_lblStatus->SetLabel(wxT("状態: 一時停止中 (ファイル未選択)"));
                 m_lblStatus->SetForegroundColour(wxColour(120, 120, 120));
             }
-            if (m_lblDuration) m_lblDuration->SetLabel(wxT("録音時間: --:--:--"));
+            if (m_lblDuration) m_lblDuration->SetLabel(wxT("記録時間: --:--:--"));
             if (m_lblFileSize) m_lblFileSize->SetLabel(wxT("ファイルサイズ: --"));
             if (m_lblOverruns) m_lblOverruns->SetLabel(wxEmptyString);
             if (m_lblUiDrops) m_lblUiDrops->SetLabel(wxEmptyString);
@@ -1564,10 +1588,10 @@ void MainFrame::OnModeChanged(wxBookCtrlEvent& event) {
         if (m_btnHold) m_btnHold->Show(true);
         if (m_btnAcGuide) m_btnAcGuide->Show(true);
         if (m_waveOptSizer) m_waveOptSizer->Layout();
-        if (m_lblDuration) m_lblDuration->SetLabel(wxT("録音時間: 00:00:00"));
+        if (m_lblDuration) m_lblDuration->SetLabel(wxT("記録時間: 00:00:00"));
         if (m_lblFileSize) m_lblFileSize->SetLabel(wxT("ファイルサイズ: 0.00 MB"));
         if (m_lblOverruns) {
-            m_lblOverruns->SetLabel(wxT("データ欠落(Overrun): 0 件"));
+            m_lblOverruns->SetLabel(wxT("データ欠落: 0 件"));
             m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
         }
         if (m_lblUiDrops) m_lblUiDrops->SetLabel(wxT("UI描画スキップ: 0 件"));
@@ -1600,7 +1624,7 @@ void MainFrame::OnPlayOpenFile(wxCommandEvent& /*event*/) {
     m_waveformPanel->SetFullScaleVoltage(m_playbackLoader.GetFullScaleVoltage());
 
     double totalDuration = m_playbackLoader.GetDurationSec();
-    m_lblTotalDuration->SetLabel(wxString::Format(wxT("/ 総時間 %s"),
+    m_lblTotalDuration->SetLabel(wxString::Format(wxT("/ %s"),
         wxString::FromUTF8(FormatPlaybackTime(totalDuration).c_str())));
 
     m_anchorPosition = 0.0;

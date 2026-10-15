@@ -1339,7 +1339,11 @@ void TestPlaybackEpochIsolationAndDurationRetention() {
     }
 }
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc == 2 && std::string(argv[1]) == "--hardware-only") {
+        TestPreviewModeAndTransitions();
+        return 0;
+    }
     std::cout << "=== Running Data-Logger Unit & System Tests ===" << std::endl;
     TestHeaderSpecification();
     TestDecimatorProcessor();
@@ -1357,7 +1361,7 @@ int main() {
     TestDecimation32kHzTo1000HzAndHeader();
     TestCheckInputFormatSupportAPI();
     TestTimeAxisCalculations();
-    TestPreviewModeAndTransitions();
+    // Real audio capture is opt-in via the separate TestAudioHardware CTest entry.
     TestPlaybackCoreAndClock();
     TestPartialFileRecoveryAndParserValidation();
     TestPlaybackEpochIsolationAndDurationRetention();

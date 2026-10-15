@@ -14,7 +14,7 @@
       "repository": "https://github.com/wxWidgets/wxWidgets.git",
       "tag": "v3.2.5",
       "commit": "573e56d432cc2c4b19a27aa5cad3e6045bfc542b",
-      "submodules": false,
+      "submodules": true,
       "license": {
         "name": "wxWindows Library Licence 3.1",
         "relative_path": "docs/licence.txt"

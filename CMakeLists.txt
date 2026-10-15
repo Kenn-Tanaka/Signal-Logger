@@ -28,16 +28,6 @@ if (EXISTS "${DLOG_DEPS_DIR}/build_completed.json" AND
     set(WX_INC_DIR "${DEPS_INSTALL_DIR}/include")
     set(WX_SETUP_DIR "${DEPS_INSTALL_DIR}/lib/gcc_x64_lib/mswu")
     set(QUEUE_INC_DIR "${DEPS_INSTALL_DIR}/include")
-elseif (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/portaudio/lib/libportaudio.a" AND
-        EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/wxWidgets/lib/gcc_x64_lib/libwxmsw32u_core.a" AND
-        EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/wxWidgets/lib/gcc_x64_lib/mswu/wx/setup.h")
-    message(STATUS "Using dependencies from 3rdparty/ (legacy local fallback)")
-    set(PA_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/portaudio/lib")
-    set(PA_INC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/portaudio/include")
-    set(WX_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/wxWidgets/lib/gcc_x64_lib")
-    set(WX_INC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/wxWidgets/include")
-    set(WX_SETUP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/wxWidgets/lib/gcc_x64_lib/mswu")
-    set(QUEUE_INC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/readerwriterqueue")
 else()
     message(FATAL_ERROR "Complete verified dependencies not found at '${DLOG_DEPS_DIR}'. Run scripts/build-deps.ps1 to build dependencies from official sources.")
 endif()
@@ -219,6 +209,11 @@ target_link_options(test_dlog PRIVATE
 )
 
 add_test(NAME TestDataLogger COMMAND $<TARGET_FILE:test_dlog>)
+option(DLOG_ENABLE_HARDWARE_TESTS "Enable tests that capture live audio (opt-in)" OFF)
+if(DLOG_ENABLE_HARDWARE_TESTS)
+    add_test(NAME TestAudioHardware COMMAND $<TARGET_FILE:test_dlog> --hardware-only)
+    set_tests_properties(TestAudioHardware PROPERTIES LABELS "hardware" TIMEOUT 30)
+endif()
 
 # 3.2 コンバータコアテスト (test_converter)
 set(TEST_CONVERTER_SOURCES

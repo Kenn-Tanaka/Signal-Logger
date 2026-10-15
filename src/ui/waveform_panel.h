@@ -89,8 +89,20 @@ public:
     uint64_t GetLastFrameIndex() const { return m_lastFrameIndex; }
     bool HasData() const { return m_hasData; }
 
+    enum class TimeReferenceMode {
+        None,
+        PreviewStart,
+        RecordStart
+    };
+
     /**
-     * @brief 時間軸基準ラベル（"プレビュー開始から" または "記録開始から"）の設定
+     * @brief 時間軸基準モードの設定
+     */
+    void SetTimeReferenceMode(TimeReferenceMode mode);
+    TimeReferenceMode GetTimeReferenceMode() const { return m_timeRefMode; }
+
+    /**
+     * @brief 時間軸基準ラベル（後方互換用）
      */
     void SetTimeReferenceLabel(const wxString& label);
     wxString GetTimeReferenceLabel() const;
@@ -125,6 +137,7 @@ private:
     double m_fullScaleVoltage = 1.0; // フルスケール電圧 [V] (デフォルト 1.0 V)
     bool m_isHold = false;        // 波形一時停止 (Hold) フラグ
     std::vector<ChannelMetadata> m_channelMetadata; // チャネル名・単位
+    TimeReferenceMode m_timeRefMode = TimeReferenceMode::None; // 時間軸基準モード
     wxString m_timeReferenceLabel;                  // 時間軸基準ラベル（例: "プレビュー開始から", "記録開始から"）
 
     bool m_isPlaybackMode = false;                  // 再生モードフラグ

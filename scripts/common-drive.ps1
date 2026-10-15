@@ -120,12 +120,13 @@ function Test-DependencyInstall {
 
 function Get-BuilderFiles {
     param([string]$Root)
-    # Explicit roots and extensions: never recurse through the entire workspace.
-    $relative = @('CMakeLists.txt','CMakePresets.json','build.ps1','build.bat','README.md','SPEC.md','AGENTS.md',
+    $relative = @('CMakeLists.txt','CMakePresets.json','build.ps1','build.bat',
+        'README.md','README.en.md','SPEC.md','SPEC.en.md','AGENTS.md',
         'LICENSE','LICENSES.md','.gitignore','tests/test_dlog.cpp','tests/test_converter.cpp','tests/test_build_scripts.ps1',
         'tests/fixtures/README.md','tests/fixtures/generate_fixtures.py','tools/read_dlog.py',
         'deps/dependencies.lock.json','deps/runtime-notices.lock.json',
-        'docs/QUICKSTART.md','docs/REFERENCE_MANUAL.md','docs/BINARY_README.md','docs/BUILDING.md',
+        'docs/QUICKSTART.md','docs/QUICKSTART.en.md','docs/REFERENCE_MANUAL.md','docs/REFERENCE_MANUAL.en.md',
+        'docs/BINARY_README.md','docs/BINARY_README.en.md','docs/BUILDING.md','docs/BUILDING.en.md',
         'scripts/common-drive.ps1','scripts/build-deps.ps1','scripts/package.ps1','scripts/package-builder.ps1',
         'scripts/test-clean-build.ps1','scripts/test-packaging.ps1')
     foreach ($dir in @('src','src_converter')) {

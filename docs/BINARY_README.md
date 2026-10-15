@@ -1,3 +1,5 @@
+[English](README.en.md)
+
 # Data-Logger Suite — Windowsバイナリ配布
 
 Windows 10／11（64-bit）用の最大8チャネル信号ロガーです。

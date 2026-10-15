@@ -1,5 +1,6 @@
 #include "ui/converter_frame.h"
 #include "dlog_reader.h"
+#include "common/localized_strings.h"
 
 #include <wx/sizer.h>
 #include <wx/statbox.h>
@@ -11,6 +12,7 @@
 #include <wx/utils.h>
 #include <wx/progdlg.h>
 #include <wx/app.h>
+#include <wx/menu.h>
 #include <iomanip>
 #include <sstream>
 #include <cmath>
@@ -23,21 +25,20 @@ namespace dlog {
 class ChannelConfigDialog : public wxDialog {
 public:
     ChannelConfigDialog(wxWindow* parent, const std::vector<ChannelMetadata>& meta, int channelCount)
-        : wxDialog(parent, wxID_ANY, wxT("チャネル名称・単位設定"), wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
+        : wxDialog(parent, wxID_ANY, TrWx(StringId::ChannelConfigTitle), wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
           m_meta(meta), m_channelCount(channelCount) {
 
         auto* mainSizer = new wxBoxSizer(wxVERTICAL);
-        auto* descText = new wxStaticText(this, wxID_ANY,
-            wxT("各チャネルの計測信号名（例: V_bat, 歪みゲージ, 負荷電流）および物理単位（例: V, mV, A, kPa）を設定します。\n設定内容はエクスポートされるCSVの列名（例: V_bat[V]）に反映されます。"));
+        auto* descText = new wxStaticText(this, wxID_ANY, TrWx(StringId::ChannelConfigDesc));
         descText->Wrap(420);
         mainSizer->Add(descText, 0, wxALL, 10);
 
         auto* grid = new wxFlexGridSizer(m_channelCount + 1, 3, 6, 10);
         grid->AddGrowableCol(1, 1);
 
-        grid->Add(new wxStaticText(this, wxID_ANY, wxT("チャネル")), 0, wxALIGN_CENTER_VERTICAL);
-        grid->Add(new wxStaticText(this, wxID_ANY, wxT("信号名称 (Label)")), 0, wxALIGN_CENTER_VERTICAL);
-        grid->Add(new wxStaticText(this, wxID_ANY, wxT("物理単位 (Unit)")), 0, wxALIGN_CENTER_VERTICAL);
+        grid->Add(new wxStaticText(this, wxID_ANY, TrWx(StringId::ChannelColChannel)), 0, wxALIGN_CENTER_VERTICAL);
+        grid->Add(new wxStaticText(this, wxID_ANY, TrWx(StringId::ChannelColLabel)), 0, wxALIGN_CENTER_VERTICAL);
+        grid->Add(new wxStaticText(this, wxID_ANY, TrWx(StringId::ChannelColUnit)), 0, wxALIGN_CENTER_VERTICAL);
 
         if (m_meta.size() < static_cast<size_t>(m_channelCount)) {
             m_meta.resize(m_channelCount);
@@ -94,6 +95,8 @@ private:
 };
 
 wxBEGIN_EVENT_TABLE(ConverterFrame, wxFrame)
+    EVT_MENU(ID_LANG_JA, ConverterFrame::OnLanguageSelectJa)
+    EVT_MENU(ID_LANG_EN, ConverterFrame::OnLanguageSelectEn)
     EVT_BUTTON(ID_ADD_FILES, ConverterFrame::OnAddFiles)
     EVT_BUTTON(ID_ADD_FOLDER, ConverterFrame::OnAddFolder)
     EVT_BUTTON(ID_REMOVE_SEL, ConverterFrame::OnRemoveSelected)
@@ -134,11 +137,19 @@ ConverterFrame::~ConverterFrame() {
 void ConverterFrame::InitUI() {
     SetMinSize(wxSize(850, 680));
 
+    // メニューバー: 言語 / Language
+    auto* menuBar = new wxMenuBar();
+    auto* langMenu = new wxMenu();
+    m_menuLangJa = langMenu->AppendRadioItem(ID_LANG_JA, wxT("日本語"));
+    m_menuLangEn = langMenu->AppendRadioItem(ID_LANG_EN, wxT("English"));
+    menuBar->Append(langMenu, wxT("言語 / Language"));
+    SetMenuBar(menuBar);
+
     auto* mainSizer = new wxBoxSizer(wxVERTICAL);
 
     // --- 上部: ファイル一覧リスト ---
-    auto* listBox = new wxStaticBox(this, wxID_ANY, wxT(" 変換対象ファイル一覧 "));
-    auto* listSizer = new wxStaticBoxSizer(listBox, wxVERTICAL);
+    m_listBox = new wxStaticBox(this, wxID_ANY, wxT(" 変換対象ファイル一覧 "));
+    auto* listSizer = new wxStaticBoxSizer(m_listBox, wxVERTICAL);
 
     m_listCtrl = new wxListCtrl(this, wxID_ANY, wxDefaultPosition, wxSize(-1, 200),
                                 wxLC_REPORT | wxLC_HRULES | wxLC_VRULES);
@@ -166,17 +177,17 @@ void ConverterFrame::InitUI() {
     listBtnSizer->AddStretchSpacer();
     listBtnSizer->Add(m_btnRecoverPartial, 0, wxRIGHT, 5);
 
-
     listSizer->Add(listBtnSizer, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 5);
     mainSizer->Add(listSizer, 1, wxEXPAND | wxALL, 6);
 
     // --- 中部: 出力・変換オプション ---
-    auto* optBox = new wxStaticBox(this, wxID_ANY, wxT(" 変換オプション "));
-    auto* optSizer = new wxStaticBoxSizer(optBox, wxVERTICAL);
+    m_optBox = new wxStaticBox(this, wxID_ANY, wxT(" 変換オプション "));
+    auto* optSizer = new wxStaticBoxSizer(m_optBox, wxVERTICAL);
 
     // 出力先フォルダ
     auto* outDirSizer = new wxBoxSizer(wxHORIZONTAL);
-    outDirSizer->Add(new wxStaticText(this, wxID_ANY, wxT("出力先:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
+    m_lblOutputDir = new wxStaticText(this, wxID_ANY, wxT("出力先:"));
+    outDirSizer->Add(m_lblOutputDir, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
     m_radioOutSameDir = new wxRadioButton(this, ID_RADIO_OUT_SAME, wxT("入力ファイルと同じフォルダ"), wxDefaultPosition, wxDefaultSize, wxRB_GROUP);
     m_radioOutCustomDir = new wxRadioButton(this, ID_RADIO_OUT_CUSTOM, wxT("指定フォルダ:"));
     m_txtCustomOutputDir = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(250, -1));
@@ -193,7 +204,8 @@ void ConverterFrame::InitUI() {
 
     // 時間列形式 & 間引き & 区切り文字
     auto* formatRowSizer = new wxBoxSizer(wxHORIZONTAL);
-    formatRowSizer->Add(new wxStaticText(this, wxID_ANY, wxT("時間列形式:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
+    m_lblTimeFormat = new wxStaticText(this, wxID_ANY, wxT("時間列形式:"));
+    formatRowSizer->Add(m_lblTimeFormat, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
     m_radioTimeRelSec = new wxRadioButton(this, wxID_ANY, wxT("相対時間(秒)"), wxDefaultPosition, wxDefaultSize, wxRB_GROUP);
     m_radioTimeAbs = new wxRadioButton(this, wxID_ANY, wxT("絶対日時 (UTC)"));
     m_radioTimeIndex = new wxRadioButton(this, wxID_ANY, wxT("サンプル番号"));
@@ -204,7 +216,8 @@ void ConverterFrame::InitUI() {
     formatRowSizer->Add(m_radioTimeIndex, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
     formatRowSizer->Add(m_radioTimeNone, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 20);
 
-    formatRowSizer->Add(new wxStaticText(this, wxID_ANY, wxT("間引き:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblDecimation = new wxStaticText(this, wxID_ANY, wxT("間引き:"));
+    formatRowSizer->Add(m_lblDecimation, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     wxArrayString decChoices;
     decChoices.Add(wxT("1/1 (全サンプル)"));
     decChoices.Add(wxT("1/2 (2-to-1)"));
@@ -218,7 +231,8 @@ void ConverterFrame::InitUI() {
     m_choiceDecimation->SetSelection(0);
     formatRowSizer->Add(m_choiceDecimation, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
 
-    formatRowSizer->Add(new wxStaticText(this, wxID_ANY, wxT("区切り:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblDelimiter = new wxStaticText(this, wxID_ANY, wxT("区切り:"));
+    formatRowSizer->Add(m_lblDelimiter, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     wxArrayString delimChoices;
     delimChoices.Add(wxT("カンマ (CSV)"));
     delimChoices.Add(wxT("タブ (TSV)"));
@@ -226,7 +240,8 @@ void ConverterFrame::InitUI() {
     m_choiceDelimiter->SetSelection(0);
     formatRowSizer->Add(m_choiceDelimiter, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
 
-    formatRowSizer->Add(new wxStaticText(this, wxID_ANY, wxT("数値精度:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblPrecision = new wxStaticText(this, wxID_ANY, wxT("数値精度:"));
+    formatRowSizer->Add(m_lblPrecision, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     wxArrayString precChoices;
     precChoices.Add(wxT("4 桁"));
     precChoices.Add(wxT("6 桁 (推奨)"));
@@ -248,7 +263,8 @@ void ConverterFrame::InitUI() {
     m_chkSplitLines->SetValue(true);
     splitRowSizer->Add(m_chkSplitLines, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
 
-    splitRowSizer->Add(new wxStaticText(this, wxID_ANY, wxT("1ファイルあたりの最大行数:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblSplitLines = new wxStaticText(this, wxID_ANY, wxT("1ファイルあたりの最大行数:"));
+    splitRowSizer->Add(m_lblSplitLines, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     // デフォルト 1,000,000 行 (1000〜100,000,000)
     m_spinMaxLines = new wxSpinCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(120, -1),
                                     wxSP_ARROW_KEYS, 1000, 100000000, 1000000);
@@ -262,7 +278,8 @@ void ConverterFrame::InitUI() {
 
     // 出力チャネル個別選択 (MED-02)
     auto* channelRowSizer = new wxBoxSizer(wxHORIZONTAL);
-    channelRowSizer->Add(new wxStaticText(this, wxID_ANY, wxT("出力チャネル:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
+    m_lblOutputChannel = new wxStaticText(this, wxID_ANY, wxT("出力チャネル:"));
+    channelRowSizer->Add(m_lblOutputChannel, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
     m_chkAllChannels = new wxCheckBox(this, ID_CHK_ALL_CH, wxT("全チャネル"));
     m_chkAllChannels->SetValue(true);
     channelRowSizer->Add(m_chkAllChannels, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
@@ -284,12 +301,14 @@ void ConverterFrame::InitUI() {
     m_chkTimeRange->SetValue(false);
     timeRangeRowSizer->Add(m_chkTimeRange, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
 
-    timeRangeRowSizer->Add(new wxStaticText(this, wxID_ANY, wxT("開始時間[秒]:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblTimeRangeFrom = new wxStaticText(this, wxID_ANY, wxT("開始時間[秒]:"));
+    timeRangeRowSizer->Add(m_lblTimeRangeFrom, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     m_txtStartTime = new wxTextCtrl(this, wxID_ANY, wxT("0.0"), wxDefaultPosition, wxSize(70, -1));
     m_txtStartTime->Disable();
     timeRangeRowSizer->Add(m_txtStartTime, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
 
-    timeRangeRowSizer->Add(new wxStaticText(this, wxID_ANY, wxT("終了時間[秒] (0=末尾まで):")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblTimeRangeTo = new wxStaticText(this, wxID_ANY, wxT("終了時間[秒] (0=末尾まで):"));
+    timeRangeRowSizer->Add(m_lblTimeRangeTo, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     m_txtEndTime = new wxTextCtrl(this, wxID_ANY, wxT("0.0"), wxDefaultPosition, wxSize(70, -1));
     m_txtEndTime->Disable();
     timeRangeRowSizer->Add(m_txtEndTime, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
@@ -298,8 +317,8 @@ void ConverterFrame::InitUI() {
     mainSizer->Add(optSizer, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
 
     // --- 下部: 進捗表示 & アクションボタン ---
-    auto* progBox = new wxStaticBox(this, wxID_ANY, wxT(" 進捗・実行 "));
-    auto* progSizer = new wxStaticBoxSizer(progBox, wxVERTICAL);
+    m_progBox = new wxStaticBox(this, wxID_ANY, wxT(" 進捗・実行 "));
+    auto* progSizer = new wxStaticBoxSizer(m_progBox, wxVERTICAL);
 
     auto* gaugeGrid = new wxFlexGridSizer(2, 2, 4, 8);
     gaugeGrid->AddGrowableCol(1, 1);
@@ -341,6 +360,139 @@ void ConverterFrame::InitUI() {
 
     SetSizer(mainSizer);
     Layout();
+    ApplyLanguage();
+}
+
+void ConverterFrame::ApplyLanguage() {
+    SetTitle(TrWx(StringId::AppTitleConverter));
+
+    if (m_menuLangJa && m_menuLangEn) {
+        Language currentLang = GetUILanguage();
+        m_menuLangJa->Check(currentLang == Language::Japanese);
+        m_menuLangEn->Check(currentLang == Language::English);
+    }
+
+    if (m_listBox) m_listBox->SetLabel(TrWx(StringId::BoxTargetFileList));
+
+    if (m_listCtrl) {
+        wxListItem col;
+        col.SetMask(wxLIST_MASK_TEXT);
+
+        col.SetText(TrWx(StringId::ColStatus));
+        m_listCtrl->SetColumn(0, col);
+        col.SetText(TrWx(StringId::ColFileName));
+        m_listCtrl->SetColumn(1, col);
+        col.SetText(TrWx(StringId::ColSampling));
+        m_listCtrl->SetColumn(2, col);
+        col.SetText(TrWx(StringId::ColChannels));
+        m_listCtrl->SetColumn(3, col);
+        col.SetText(TrWx(StringId::ColDuration));
+        m_listCtrl->SetColumn(4, col);
+        col.SetText(TrWx(StringId::ColSize));
+        m_listCtrl->SetColumn(5, col);
+        col.SetText(TrWx(StringId::ColPath));
+        m_listCtrl->SetColumn(6, col);
+    }
+
+    if (m_btnAddFiles) m_btnAddFiles->SetLabel(TrWx(StringId::ButtonAddFiles));
+    if (m_btnAddFolder) m_btnAddFolder->SetLabel(TrWx(StringId::ButtonAddFolder));
+    if (m_btnRemove) m_btnRemove->SetLabel(TrWx(StringId::ButtonRemoveSelected));
+    if (m_btnClear) m_btnClear->SetLabel(TrWx(StringId::ButtonClearList));
+    if (m_btnRecoverPartial) m_btnRecoverPartial->SetLabel(TrWx(StringId::ButtonRecoverPartial));
+
+    if (m_optBox) m_optBox->SetLabel(TrWx(StringId::BoxConversionOptions));
+    if (m_lblOutputDir) m_lblOutputDir->SetLabel(TrWx(StringId::LabelOutputDir));
+    if (m_radioOutSameDir) m_radioOutSameDir->SetLabel(TrWx(StringId::RadioOutSameDir));
+    if (m_radioOutCustomDir) m_radioOutCustomDir->SetLabel(TrWx(StringId::RadioOutCustomDir));
+    if (m_btnBrowseOutputDir) m_btnBrowseOutputDir->SetLabel(TrWx(StringId::ButtonBrowse));
+
+    if (m_lblTimeFormat) m_lblTimeFormat->SetLabel(TrWx(StringId::LabelTimeColumnFormat));
+    if (m_radioTimeRelSec) m_radioTimeRelSec->SetLabel(TrWx(StringId::RadioTimeRelSec));
+    if (m_radioTimeAbs) m_radioTimeAbs->SetLabel(TrWx(StringId::RadioTimeAbs));
+    if (m_radioTimeIndex) m_radioTimeIndex->SetLabel(TrWx(StringId::RadioTimeIndex));
+    if (m_radioTimeNone) m_radioTimeNone->SetLabel(TrWx(StringId::RadioTimeNone));
+
+    if (m_lblDecimation) m_lblDecimation->SetLabel(TrWx(StringId::LabelDecimationStep));
+    if (m_choiceDecimation && m_choiceDecimation->GetCount() >= 8) {
+        int decSel = m_choiceDecimation->GetSelection();
+        m_choiceDecimation->SetString(0, TrWx(StringId::Decimation1to1));
+        m_choiceDecimation->SetString(1, TrWx(StringId::Decimation1to2));
+        m_choiceDecimation->SetString(2, TrWx(StringId::Decimation1to4));
+        m_choiceDecimation->SetString(3, TrWx(StringId::Decimation1to5));
+        m_choiceDecimation->SetString(4, TrWx(StringId::Decimation1to10));
+        m_choiceDecimation->SetString(5, TrWx(StringId::Decimation1to20));
+        m_choiceDecimation->SetString(6, TrWx(StringId::Decimation1to50));
+        m_choiceDecimation->SetString(7, TrWx(StringId::Decimation1to100));
+        m_choiceDecimation->SetSelection(decSel);
+    }
+
+    if (m_lblDelimiter) m_lblDelimiter->SetLabel(TrWx(StringId::LabelDelimiter));
+    if (m_choiceDelimiter && m_choiceDelimiter->GetCount() >= 2) {
+        int delimSel = m_choiceDelimiter->GetSelection();
+        m_choiceDelimiter->SetString(0, TrWx(StringId::DelimComma));
+        m_choiceDelimiter->SetString(1, TrWx(StringId::DelimTab));
+        m_choiceDelimiter->SetSelection(delimSel);
+    }
+
+    if (m_lblPrecision) m_lblPrecision->SetLabel(TrWx(StringId::LabelPrecision));
+    if (m_choicePrecision && m_choicePrecision->GetCount() >= 3) {
+        int precSel = m_choicePrecision->GetSelection();
+        m_choicePrecision->SetString(0, TrWx(StringId::Prec4Digits));
+        m_choicePrecision->SetString(1, TrWx(StringId::Prec6Digits));
+        m_choicePrecision->SetString(2, TrWx(StringId::Prec8Digits));
+        m_choicePrecision->SetSelection(precSel);
+    }
+
+    if (m_chkApplyVoltageScale) {
+        m_chkApplyVoltageScale->SetLabel(TrWx(StringId::CheckApplyVoltageScale));
+        m_chkApplyVoltageScale->SetToolTip(TrWx(StringId::TipApplyVoltageScale));
+    }
+
+    if (m_chkSplitLines) m_chkSplitLines->SetLabel(TrWx(StringId::CheckSplitLines));
+    if (m_lblSplitLines) m_lblSplitLines->SetLabel(TrWx(StringId::LabelMaxLinesPerFile));
+    if (m_btnExcelLimit) m_btnExcelLimit->SetLabel(TrWx(StringId::ButtonExcelLimit));
+
+    if (m_lblOutputChannel) m_lblOutputChannel->SetLabel(TrWx(StringId::LabelOutputChannels));
+    if (m_chkAllChannels) m_chkAllChannels->SetLabel(TrWx(StringId::CheckAllChannels));
+    if (m_btnChannelConfig) m_btnChannelConfig->SetLabel(TrWx(StringId::ButtonChannelConfig));
+
+    if (m_chkTimeRange) m_chkTimeRange->SetLabel(TrWx(StringId::CheckTimeRange));
+    if (m_lblTimeRangeFrom) m_lblTimeRangeFrom->SetLabel(TrWx(StringId::LabelTimeRangeFrom));
+    if (m_lblTimeRangeTo) m_lblTimeRangeTo->SetLabel(TrWx(StringId::LabelTimeRangeTo));
+
+    if (m_progBox) m_progBox->SetLabel(TrWx(StringId::BoxProgressAndActions));
+    if (m_btnOpenOutputDir) m_btnOpenOutputDir->SetLabel(TrWx(StringId::ButtonOpenOutputDir));
+    if (m_btnStart) m_btnStart->SetLabel(TrWx(StringId::ButtonStartConversion));
+    if (m_btnCancel) m_btnCancel->SetLabel(TrWx(StringId::ButtonCancelConversion));
+
+    if (!m_isConverting && m_lblSpeedAndEta) {
+        m_lblSpeedAndEta->SetLabel(TrWx(StringId::StatusPending));
+    }
+
+    UpdateListDisplay();
+    Layout();
+}
+
+void ConverterFrame::OnLanguageSelectJa(wxCommandEvent& /*event*/) {
+    if (GetUILanguage() != Language::Japanese) {
+        std::string err;
+        bool saved = LanguagePreferences::SetCurrentLanguage(Language::Japanese, true, &err);
+        ApplyLanguage();
+        if (!saved && !err.empty()) {
+            SetStatusText(TrFormatWx(StringId::WarnSaveLanguageFailed, err));
+        }
+    }
+}
+
+void ConverterFrame::OnLanguageSelectEn(wxCommandEvent& /*event*/) {
+    if (GetUILanguage() != Language::English) {
+        std::string err;
+        bool saved = LanguagePreferences::SetCurrentLanguage(Language::English, true, &err);
+        ApplyLanguage();
+        if (!saved && !err.empty()) {
+            SetStatusText(TrFormatWx(StringId::WarnSaveLanguageFailed, err));
+        }
+    }
 }
 
 void ConverterFrame::AddFiles(const wxArrayString& filePaths) {
@@ -380,25 +532,45 @@ void ConverterFrame::AddFiles(const wxArrayString& filePaths) {
 }
 
 void ConverterFrame::UpdateListDisplay() {
-    m_listCtrl->DeleteAllItems();
+    bool sameCount = (m_listCtrl->GetItemCount() == static_cast<long>(m_items.size()));
+
+    std::vector<long> selectedIndices;
+    long topIndex = 0;
+    if (!sameCount) {
+        long sel = -1;
+        while ((sel = m_listCtrl->GetNextItem(sel, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED)) != -1) {
+            selectedIndices.push_back(sel);
+        }
+        topIndex = m_listCtrl->GetTopItem();
+        m_listCtrl->DeleteAllItems();
+    }
 
     for (size_t i = 0; i < m_items.size(); ++i) {
         const auto& it = m_items[i];
 
         wxString statusStr;
         switch (it.status) {
-            case BatchStatus::Pending:    statusStr = wxT("待機中"); break;
-            case BatchStatus::Converting: statusStr = wxString::Format(wxT("変換中 (%.0f%%)"), it.progress * 100.0); break;
-            case BatchStatus::Completed:  statusStr = wxString::Format(wxT("完了 (%zu個)"), it.outputFiles.size()); break;
-            case BatchStatus::Canceled:   statusStr = wxT("中断"); break;
+            case BatchStatus::Pending:    statusStr = TrWx(StringId::StatusPending); break;
+            case BatchStatus::Converting: statusStr = TrFormatWx(StringId::StatusConvertingProgressFormat, {std::to_string(static_cast<int>(it.progress * 100.0))}); break;
+            case BatchStatus::Completed:  statusStr = TrFormatWx(StringId::StatusCompletedFormat, {std::to_string(it.outputFiles.size())}); break;
+            case BatchStatus::Canceled:   statusStr = TrWx(StringId::StatusCanceled); break;
             case BatchStatus::Error:
-                statusStr = it.errorMessage.empty()
-                    ? wxT("エラー")
-                    : wxString::Format(wxT("エラー: %s"), wxString::FromUTF8(it.errorMessage.c_str()));
+                if (it.error.hasError()) {
+                    statusStr = it.error.FormatCurrent();
+                } else if (!it.errorMessage.empty()) {
+                    statusStr = TrFormatWx(StringId::StatusErrorWithDetail, {it.errorMessage});
+                } else {
+                    statusStr = TrWx(StringId::StatusError);
+                }
                 break;
         }
 
-        long index = m_listCtrl->InsertItem(static_cast<long>(i), statusStr);
+        long index = static_cast<long>(i);
+        if (!sameCount) {
+            index = m_listCtrl->InsertItem(index, statusStr);
+        } else {
+            m_listCtrl->SetItem(index, 0, statusStr);
+        }
 
         m_listCtrl->SetItem(index, 1, wxString::FromUTF8(it.fileNameOnly.c_str()));
 
@@ -427,12 +599,24 @@ void ConverterFrame::UpdateListDisplay() {
 
         m_listCtrl->SetItem(index, 6, wxString::FromUTF8(it.inputFilePath.c_str()));
     }
+
+    if (!sameCount) {
+        for (long s : selectedIndices) {
+            if (s < m_listCtrl->GetItemCount()) {
+                m_listCtrl->SetItemState(s, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
+            }
+        }
+        if (topIndex >= 0 && topIndex < m_listCtrl->GetItemCount()) {
+            m_listCtrl->EnsureVisible(topIndex);
+        }
+    }
 }
 
 void ConverterFrame::OnAddFiles(wxCommandEvent& /*event*/) {
-    wxFileDialog openFileDialog(this, wxT("変換する DLOG ファイルを選択（複数選択可）"),
+    wxFileDialog openFileDialog(this,
+                                TrWx(StringId::DialogAddFilesTitle),
                                 wxEmptyString, wxEmptyString,
-                                wxT("DLOGファイル (*.bin;*.dat)|*.bin;*.dat|すべてのファイル (*.*)|*.*"),
+                                TrWx(StringId::FilterDlogFiles),
                                 wxFD_OPEN | wxFD_FILE_MUST_EXIST | wxFD_MULTIPLE);
 
     if (openFileDialog.ShowModal() == wxID_CANCEL) return;
@@ -443,7 +627,9 @@ void ConverterFrame::OnAddFiles(wxCommandEvent& /*event*/) {
 }
 
 void ConverterFrame::OnAddFolder(wxCommandEvent& /*event*/) {
-    wxDirDialog dirDialog(this, wxT("DLOGファイルが含まれるフォルダを選択"), wxEmptyString,
+    wxDirDialog dirDialog(this,
+                          TrWx(StringId::DialogAddFolderTitle),
+                          wxEmptyString,
                           wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
 
     if (dirDialog.ShowModal() == wxID_CANCEL) return;
@@ -455,8 +641,8 @@ void ConverterFrame::OnAddFolder(wxCommandEvent& /*event*/) {
     for (const auto& d : datFiles) files.Add(d);
 
     if (files.empty()) {
-        wxMessageBox(wxT("指定フォルダ内に .bin または .dat ファイルが見つかりませんでした。"),
-                     wxT("情報"), wxOK | wxICON_INFORMATION, this);
+        wxMessageBox(TrWx(StringId::NoAudioFilesFoundInFolder),
+                     TrWx(StringId::InfoDialogTitle), wxOK | wxICON_INFORMATION, this);
         return;
     }
     AddFiles(files);
@@ -496,7 +682,7 @@ void ConverterFrame::OnOutputDirRadio(wxCommandEvent& /*event*/) {
 }
 
 void ConverterFrame::OnBrowseOutputDir(wxCommandEvent& /*event*/) {
-    wxDirDialog dirDialog(this, wxT("出力先フォルダを選択"), wxEmptyString, wxDD_DEFAULT_STYLE);
+    wxDirDialog dirDialog(this, TrWx(StringId::SelectOutputFolder), wxEmptyString, wxDD_DEFAULT_STYLE);
     if (dirDialog.ShowModal() == wxID_CANCEL) return;
     m_txtCustomOutputDir->SetValue(dirDialog.GetPath());
 }
@@ -678,7 +864,7 @@ void ConverterFrame::SetControlsEnabled(bool enabled) {
 
 void ConverterFrame::OnStartConversion(wxCommandEvent& /*event*/) {
     if (m_items.empty()) {
-        wxMessageBox(wxT("変換するファイルを追加してください。"), wxT("情報"), wxOK | wxICON_INFORMATION, this);
+        wxMessageBox(TrWx(StringId::NoFilesToAddPrompt), TrWx(StringId::InfoDialogTitle), wxOK | wxICON_INFORMATION, this);
         return;
     }
 
@@ -689,26 +875,26 @@ void ConverterFrame::OnStartConversion(wxCommandEvent& /*event*/) {
             !m_txtEndTime->GetValue().ToDouble(&endSec) ||
             !std::isfinite(startSec) || !std::isfinite(endSec) ||
             startSec < 0.0 || endSec < 0.0) {
-            wxMessageBox(wxT("開始時間と終了時間には0以上の数値を入力してください。"),
-                         wxT("警告"), wxOK | wxICON_WARNING, this);
+            wxMessageBox(TrWx(StringId::InvalidTimeRangePrompt),
+                         TrWx(StringId::WarningDialogTitle), wxOK | wxICON_WARNING, this);
             return;
         }
     }
 
     ConversionOptions options = GatherOptions();
     if (options.enableTimeRange && options.endTimeSec > 0.0 && options.startTimeSec >= options.endTimeSec) {
-        wxMessageBox(wxT("時間範囲の指定が不正です。開始時間は終了時間より小さく設定してください。"),
-                     wxT("警告"), wxOK | wxICON_WARNING, this);
+        wxMessageBox(TrWx(StringId::InvalidTimeRangeStartGteEnd),
+                     TrWx(StringId::WarningDialogTitle), wxOK | wxICON_WARNING, this);
         return;
     }
     if (!options.useSameDirAsInput && options.customOutputDir.empty()) {
-        wxMessageBox(wxT("指定フォルダのパスを入力してください。"), wxT("警告"), wxOK | wxICON_WARNING, this);
+        wxMessageBox(TrWx(StringId::SpecifyOutputDirPrompt), TrWx(StringId::WarningDialogTitle), wxOK | wxICON_WARNING, this);
         return;
     }
 
     std::string collisionErr;
     if (!BatchConverterWorker::CheckCollisions(m_items, options, collisionErr)) {
-        wxMessageBox(wxString::FromUTF8(collisionErr.c_str()), wxT("出力ファイル名の衝突"), wxOK | wxICON_WARNING, this);
+        wxMessageBox(wxString::FromUTF8(collisionErr.c_str()), TrWx(StringId::CollisionTitle), wxOK | wxICON_WARNING, this);
         return;
     }
 
@@ -717,13 +903,13 @@ void ConverterFrame::OnStartConversion(wxCommandEvent& /*event*/) {
 
     m_gaugeCurrent->SetValue(0);
     m_gaugeOverall->SetValue(0);
-    m_lblSpeedAndEta->SetLabel(wxT("変換を開始中..."));
+    m_lblSpeedAndEta->SetLabel(TrWx(StringId::StartingConversion));
 
     if (!m_worker->Start(m_items, options)) {
         m_isConverting = false;
         SetControlsEnabled(true);
-        wxMessageBox(wxT("変換ワーカースレッドを開始できませんでした。"),
-                     wxT("エラー"), wxOK | wxICON_ERROR, this);
+        wxMessageBox(TrWx(StringId::FailedToStartWorker),
+                     TrWx(StringId::ErrorDialogTitle), wxOK | wxICON_ERROR, this);
         return;
     }
     m_timer.Start(50); // 変換実行中のみタイマーを起動
@@ -731,7 +917,7 @@ void ConverterFrame::OnStartConversion(wxCommandEvent& /*event*/) {
 
 void ConverterFrame::OnCancelConversion(wxCommandEvent& /*event*/) {
     if (m_worker->IsRunning()) {
-        m_lblSpeedAndEta->SetLabel(wxT("中断中..."));
+        m_lblSpeedAndEta->SetLabel(TrWx(StringId::CancelingConversion));
         m_worker->Cancel();
     }
 }
@@ -750,7 +936,7 @@ void ConverterFrame::OnOpenOutputDir(wxCommandEvent& /*event*/) {
         wxExecute(wxString::Format(wxT("explorer.exe \"%s\""), dir));
 #endif
     } else {
-        wxMessageBox(wxT("出力先フォルダが見つかりません。"), wxT("エラー"), wxOK | wxICON_WARNING, this);
+        wxMessageBox(TrWx(StringId::OutputDirNotFound), TrWx(StringId::ErrorDialogTitle), wxOK | wxICON_WARNING, this);
     }
 }
 
@@ -767,19 +953,23 @@ void ConverterFrame::OnTimer(wxTimerEvent& /*event*/) {
         m_gaugeOverall->SetValue(static_cast<int>(stats.overallProgress * 1000.0));
 
         // ラベル更新
-        m_lblCurrentFile->SetLabel(wxString::Format(wxT("ファイル進捗 (%d%%):"),
-                                                    static_cast<int>(stats.currentFileProgress * 100.0)));
-        m_lblOverallStatus->SetLabel(wxString::Format(wxT("全体進捗 (%zu/%zu - %d%%):"),
-                                                      stats.completedFiles, stats.totalFiles,
-                                                      static_cast<int>(stats.overallProgress * 100.0)));
+        m_lblCurrentFile->SetLabel(TrFormatWx(StringId::LabelCurrentFileProgress,
+            std::to_string(static_cast<int>(stats.currentFileProgress * 100.0))));
+        m_lblOverallStatus->SetLabel(TrFormatWx(StringId::LabelOverallProgress,
+            std::to_string(stats.completedFiles),
+            std::to_string(stats.totalFiles),
+            std::to_string(static_cast<int>(stats.overallProgress * 100.0))));
 
         double speedMB = stats.bytesPerSec / (1024.0 * 1024.0);
         int etaSec = static_cast<int>(stats.estimatedRemainingSec);
         int etaM = etaSec / 60;
         int etaS = etaSec % 60;
 
-        m_lblSpeedAndEta->SetLabel(wxString::Format(wxT("速度: %.1f MB/s | 残り推定時間: %02d:%02d"),
-                                                    speedMB, etaM, etaS));
+        char speedBuf[32];
+        std::snprintf(speedBuf, sizeof(speedBuf), "%.1f", speedMB);
+        char etaBuf[32];
+        std::snprintf(etaBuf, sizeof(etaBuf), "%02d:%02d", etaM, etaS);
+        m_lblSpeedAndEta->SetLabel(TrFormatWx(StringId::LabelSpeedAndEtaFormat, speedBuf, etaBuf));
 
         // リストの状態を更新
         auto updatedItems = m_worker->GetItems();
@@ -788,14 +978,18 @@ void ConverterFrame::OnTimer(wxTimerEvent& /*event*/) {
             for (size_t i = 0; i < m_items.size(); ++i) {
                 wxString stStr;
                 switch (m_items[i].status) {
-                    case BatchStatus::Pending:    stStr = wxT("待機中"); break;
-                    case BatchStatus::Converting: stStr = wxT("● 変換中"); break;
-                    case BatchStatus::Completed:  stStr = wxString::Format(wxT("完了 (%zu個)"), m_items[i].outputFiles.size()); break;
-                    case BatchStatus::Canceled:   stStr = wxT("中断"); break;
+                    case BatchStatus::Pending:    stStr = TrWx(StringId::StatusPending); break;
+                    case BatchStatus::Converting: stStr = TrWx(StringId::StatusConverting); break;
+                    case BatchStatus::Completed:  stStr = TrFormatWx(StringId::StatusCompletedFormat, {std::to_string(m_items[i].outputFiles.size())}); break;
+                    case BatchStatus::Canceled:   stStr = TrWx(StringId::StatusCanceled); break;
                     case BatchStatus::Error:
-                        stStr = m_items[i].errorMessage.empty()
-                            ? wxT("エラー")
-                            : wxString::Format(wxT("エラー: %s"), wxString::FromUTF8(m_items[i].errorMessage.c_str()));
+                        if (m_items[i].error.hasError()) {
+                            stStr = m_items[i].error.FormatCurrent();
+                        } else if (!m_items[i].errorMessage.empty()) {
+                            stStr = TrFormatWx(StringId::StatusErrorWithDetail, {m_items[i].errorMessage});
+                        } else {
+                            stStr = TrWx(StringId::StatusError);
+                        }
                         break;
                 }
                 m_listCtrl->SetItem(static_cast<long>(i), 0, stStr);
@@ -843,23 +1037,26 @@ void ConverterFrame::OnTimer(wxTimerEvent& /*event*/) {
         long iconStyle = wxOK;
 
         if (wasCanceled) {
-            title = wxT("処理中断");
+            title = TrWx(StringId::StatusCanceled);
             iconStyle |= wxICON_INFORMATION;
-            msg = wxString::Format(wxT("変換処理を中断しました。\n\n変換完了: %zu 件\n未完了: %zu 件"),
-                                   completedCount, m_items.size() - completedCount);
-            m_lblSpeedAndEta->SetLabel(wxT("変換中断"));
+            msg = TrFormatWx(StringId::ConversionCanceledSummaryFormat,
+                             std::to_string(completedCount),
+                             std::to_string(m_items.size() - completedCount));
+            m_lblSpeedAndEta->SetLabel(TrWx(StringId::StatusCanceled));
         } else if (errorCount > 0) {
-            title = wxT("変換完了（エラーあり）");
+            title = TrWx(StringId::ConversionErrorsTitle);
             iconStyle |= wxICON_WARNING;
-            msg = wxString::Format(wxT("変換処理が終了しましたが、エラーが発生したファイルがあります。\n\n成功: %zu 件\nエラー: %zu 件"),
-                                   completedCount, errorCount);
-            m_lblSpeedAndEta->SetLabel(wxT("エラーありで完了"));
+            msg = TrFormatWx(StringId::ConversionErrorSummaryFormat,
+                             std::to_string(completedCount),
+                             std::to_string(errorCount));
+            m_lblSpeedAndEta->SetLabel(TrWx(StringId::ConversionFinishedWithErrors));
         } else {
-            title = wxT("変換完了");
+            title = TrWx(StringId::ConversionCompletedTitle);
             iconStyle |= wxICON_INFORMATION;
-            msg = wxString::Format(wxT("変換が正常に完了しました。\n\n成功: %zu 件 / 全 %zu 件"),
-                                   completedCount, m_items.size());
-            m_lblSpeedAndEta->SetLabel(wxT("全変換完了"));
+            msg = TrFormatWx(StringId::ConversionSuccessSummaryFormat,
+                             std::to_string(completedCount),
+                             std::to_string(m_items.size()));
+            m_lblSpeedAndEta->SetLabel(TrWx(StringId::ConversionCompletedAll));
         }
 
         // wxCallAfter で安全にダイアログを表示（タイマー処理を抜けた後）
@@ -871,8 +1068,8 @@ void ConverterFrame::OnTimer(wxTimerEvent& /*event*/) {
 
 void ConverterFrame::OnClose(wxCloseEvent& event) {
     if (m_worker->IsRunning()) {
-        int res = wxMessageBox(wxT("変換が実行中です。中断して終了しますか？"),
-                               wxT("確認"), wxYES_NO | wxICON_QUESTION, this);
+        int res = wxMessageBox(TrWx(StringId::ConfirmCloseConverting),
+                               TrWx(StringId::ConfirmDialogTitle), wxYES_NO | wxICON_QUESTION, this);
         if (res != wxYES) {
             event.Veto();
             return;
@@ -886,8 +1083,8 @@ void ConverterFrame::OnClose(wxCloseEvent& event) {
 }
 
 void ConverterFrame::OnRecoverPartial(wxCommandEvent& /*event*/) {
-    wxFileDialog openDlg(this, wxT("復旧する .partial ファイルを選択"), wxEmptyString, wxEmptyString,
-                         wxT("DLOG一時ファイル (*.partial;*.partial.*)|*.partial;*.partial.*|すべてのファイル (*.*)|*.*"),
+    wxFileDialog openDlg(this, TrWx(StringId::RecoverSelectTitle), wxEmptyString, wxEmptyString,
+                         TrWx(StringId::FilterPartialFiles),
                          wxFD_OPEN | wxFD_FILE_MUST_EXIST);
     if (openDlg.ShowModal() == wxID_CANCEL) return;
 
@@ -901,8 +1098,8 @@ void ConverterFrame::OnRecoverPartial(wxCommandEvent& /*event*/) {
     bool success = false;
 
     wxProgressDialog progressDlg(
-        wxT("ファイル復旧中"),
-        wxT("不完全な一時ファイルから有効データを復旧しています..."),
+        TrWx(StringId::RecoverProgressTitle),
+        TrWx(StringId::RecoverProgressMessage),
         1000,
         this,
         wxPD_APP_MODAL | wxPD_AUTO_HIDE | wxPD_CAN_ABORT | wxPD_ELAPSED_TIME | wxPD_REMAINING_TIME
@@ -938,15 +1135,14 @@ void ConverterFrame::OnRecoverPartial(wxCommandEvent& /*event*/) {
     }
 
     if (cancelled.load()) {
-        wxMessageBox(wxT("ファイルの復旧処理がキャンセルされました。"),
-                     wxT("キャンセル"), wxOK | wxICON_INFORMATION, this);
+        wxMessageBox(TrWx(StringId::RecoverCanceled),
+                     TrWx(StringId::InfoDialogTitle), wxOK | wxICON_INFORMATION, this);
         return;
     }
 
     if (!success) {
-        wxMessageBox(wxString::Format(wxT("不完全ファイルの復旧に失敗しました:\n%s"),
-                                      wxString::FromUTF8(errMsg.c_str())),
-                     wxT("復旧エラー"), wxOK | wxICON_ERROR, this);
+        wxMessageBox(TrFormatWx(StringId::RecoverFailedFormat, {errMsg}),
+                     TrWx(StringId::ErrorDialogTitle), wxOK | wxICON_ERROR, this);
         return;
     }
 
@@ -954,9 +1150,8 @@ void ConverterFrame::OnRecoverPartial(wxCommandEvent& /*event*/) {
     recoveredList.Add(wxString::FromUTF8(recoveredPath.c_str()));
     AddFiles(recoveredList);
 
-    wxMessageBox(wxString::Format(wxT("不完全ファイルを正常に復旧し、変換一覧に追加しました:\n%s\n\n※元の .partial ファイルは安全に保持されています。"),
-                                  wxString::FromUTF8(recoveredPath.c_str())),
-                 wxT("復旧完了"), wxOK | wxICON_INFORMATION, this);
+    wxMessageBox(TrFormatWx(StringId::RecoverSuccessFormat, {recoveredPath}),
+                 TrWx(StringId::InfoDialogTitle), wxOK | wxICON_INFORMATION, this);
 }
 
 } // namespace dlog

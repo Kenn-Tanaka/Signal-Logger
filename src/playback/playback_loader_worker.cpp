@@ -21,50 +21,68 @@ void PlaybackLoaderWorker::Stop() {
     }
     m_cv.notify_all();
 
-
     if (m_thread.joinable()) {
         m_thread.join();
     }
 
-    std::lock_guard<std::mutex> rLock(m_readerMutex);
-    if (m_reader) {
-        m_reader->Close();
-        m_reader.reset();
+    std::lock_guard<std::mutex> sLock(m_sessionMutex);
+    if (m_activeSession) {
+        m_activeSession->isCancelled.store(true);
+        if (m_activeSession->reader) {
+            m_activeSession->reader->Close();
+        }
+        m_activeSession.reset();
     }
 }
 
-bool PlaybackLoaderWorker::OpenFile(const std::string& filePath, std::string& errorMsg) {
-    auto newReader = std::make_unique<DlogReader>();
+bool PlaybackLoaderWorker::OpenFile(const std::string& filePath, std::string& errorMsg, LocalizedError* outError) {
+    auto newReader = std::make_shared<DlogReader>();
     if (!newReader->Open(filePath)) {
+        if (outError) *outError = newReader->GetLastErrorInfo();
         errorMsg = newReader->GetLastError().empty() ? "DLOGファイルを開けませんでした。" : newReader->GetLastError();
         return false;
     }
 
+    uint64_t newEpoch = m_currentEpoch.fetch_add(1) + 1;
+
+    auto session = std::make_shared<PlaybackSession>();
+    session->epoch = newEpoch;
+    session->filePath = filePath;
+    session->header = newReader->GetHeader();
+    session->channelMetadata = newReader->GetChannelMetadata();
+    session->totalFrames = newReader->GetTotalFrames();
+    session->durationSec = newReader->GetDurationSec();
+    session->sampleRate = GetDLogEffectiveSampleRate(newReader->GetHeader());
+    session->channels = newReader->GetHeader().channels;
+    session->fullScaleVoltage = newReader->GetHeader().fullScaleVoltage;
+    session->fileSize = newReader->GetFileSize();
+    session->reader = newReader;
+
     PlaybackFileInfo info;
     info.isOpen = true;
     info.filePath = filePath;
-    info.header = newReader->GetHeader();
-    info.channelMetadata = newReader->GetChannelMetadata();
-    info.totalFrames = newReader->GetTotalFrames();
-    info.durationSec = newReader->GetDurationSec();
-    info.sampleRate = GetDLogEffectiveSampleRate(newReader->GetHeader());
-    info.channels = newReader->GetHeader().channels;
-    info.fullScaleVoltage = newReader->GetHeader().fullScaleVoltage;
-    info.fileSize = newReader->GetFileSize();
+    info.header = session->header;
+    info.channelMetadata = session->channelMetadata;
+    info.totalFrames = session->totalFrames;
+    info.durationSec = session->durationSec;
+    info.sampleRate = session->sampleRate;
+    info.channels = session->channels;
+    info.fullScaleVoltage = session->fullScaleVoltage;
+    info.fileSize = session->fileSize;
+
+    {
+        std::lock_guard<std::mutex> sLock(m_sessionMutex);
+        if (m_activeSession) {
+            m_activeSession->isCancelled.store(true);
+        }
+        m_activeSession = session;
+    }
 
     {
         std::lock_guard<std::mutex> fLock(m_fileInfoMutex);
         m_fileInfo = std::move(info);
     }
 
-    {
-        std::lock_guard<std::mutex> rLock(m_readerMutex);
-        m_reader = std::move(newReader);
-        m_filePath = filePath;
-    }
-
-    // 新しい世代番号へ進めて古い要求・結果を無効化
-    m_currentEpoch.fetch_add(1);
     m_requestSeq.fetch_add(1);
     {
         std::lock_guard<std::mutex> resLock(m_resultMutex);
@@ -75,16 +93,15 @@ bool PlaybackLoaderWorker::OpenFile(const std::string& filePath, std::string& er
 
 void PlaybackLoaderWorker::CloseFile() {
     {
-        std::lock_guard<std::mutex> fLock(m_fileInfoMutex);
-        m_fileInfo = PlaybackFileInfo{};
+        std::lock_guard<std::mutex> sLock(m_sessionMutex);
+        if (m_activeSession) {
+            m_activeSession->isCancelled.store(true);
+            m_activeSession.reset();
+        }
     }
     {
-        std::lock_guard<std::mutex> rLock(m_readerMutex);
-        if (m_reader) {
-            m_reader->Close();
-            m_reader.reset();
-        }
-        m_filePath.clear();
+        std::lock_guard<std::mutex> fLock(m_fileInfoMutex);
+        m_fileInfo = PlaybackFileInfo{};
     }
     m_currentEpoch.fetch_add(1);
     m_requestSeq.fetch_add(1);
@@ -171,6 +188,10 @@ uint64_t PlaybackLoaderWorker::RequestWindow(double centerTimeSec, double timeWi
         m_latestRequest.centerTimeSec = centerTimeSec;
         m_latestRequest.timeWindowSec = (timeWindowSec > 0.0) ? timeWindowSec : 2.0;
         m_latestRequest.pixelWidth = (pixelWidth > 10) ? pixelWidth : 1000;
+        {
+            std::lock_guard<std::mutex> sLock(m_sessionMutex);
+            m_latestRequest.session = m_activeSession;
+        }
         m_hasNewRequest = true;
     }
     m_cv.notify_one();
@@ -197,6 +218,7 @@ void PlaybackLoaderWorker::WorkerLoop() {
 
     while (true) {
         PlaybackRequest req;
+        std::function<void(int, uint64_t)> syncHook;
         {
             std::unique_lock<std::mutex> lock(m_requestMutex);
             m_cv.wait(lock, [this] {
@@ -209,10 +231,17 @@ void PlaybackLoaderWorker::WorkerLoop() {
 
             req = m_latestRequest;
             m_hasNewRequest = false;
+            syncHook = m_testSyncHook;
         }
 
         // 要求が到着した時点で既に古いepochなら処理をスキップ
         if (req.epoch < m_currentEpoch.load()) {
+            continue;
+        }
+
+        // 同一セッションオブジェクトを取得して、以降の全読込をこのセッションへ固定 (PLAY-001)
+        std::shared_ptr<PlaybackSession> session = req.session;
+        if (!session || !session->reader || !session->reader->IsOpen() || session->isCancelled.load()) {
             continue;
         }
 
@@ -226,173 +255,156 @@ void PlaybackLoaderWorker::WorkerLoop() {
 
             bool isCancelled = false;
 
-            // リーダーの基本情報取得（短時間ロック）
-            double Fs = 0.0;
-            uint64_t totalFrames = 0;
-            int channels = 0;
-            double fullScale = 1.0;
-            bool isOpen = false;
+            double Fs = session->sampleRate;
+            uint64_t totalFrames = session->totalFrames;
+            int channels = session->channels;
+            double fullScale = session->fullScaleVoltage;
 
-            {
-                std::lock_guard<std::mutex> rLock(m_readerMutex);
-                if (m_reader && m_reader->IsOpen()) {
-                    isOpen = true;
-                    Fs = GetDLogEffectiveSampleRate(m_reader->GetHeader());
-                    totalFrames = m_reader->GetTotalFrames();
-                    channels = m_reader->GetHeader().channels;
-                    fullScale = m_reader->GetHeader().fullScaleVoltage;
-                }
+            result.sampleRate = Fs;
+            result.totalFrames = totalFrames;
+            result.channels = channels;
+            result.fullScaleVoltage = fullScale;
+            result.peakAbsPerChannel.assign(channels, 0.0f);
+
+            double leftTime = req.centerTimeSec - req.timeWindowSec / 2.0;
+            double rightTime = req.centerTimeSec + req.timeWindowSec / 2.0;
+
+            int64_t startFrame = static_cast<int64_t>(std::floor(leftTime * Fs));
+            int64_t endFrame = static_cast<int64_t>(std::ceil(rightTime * Fs));
+
+            int64_t clampedStart = std::max<int64_t>(0, startFrame);
+            int64_t clampedEnd = std::min<int64_t>(static_cast<int64_t>(totalFrames) - 1, endFrame);
+
+            result.validLeftTime = (clampedStart <= clampedEnd && Fs > 0.0)
+                ? (static_cast<double>(clampedStart) / Fs) : 0.0;
+            result.validRightTime = (clampedStart <= clampedEnd && Fs > 0.0)
+                ? (static_cast<double>(clampedEnd + 1) / Fs) : 0.0;
+            result.startFrame = clampedStart;
+
+            if (syncHook) {
+                syncHook(0, req.epoch);
             }
 
-            if (!isOpen) {
-                result.hasError = true;
-                result.errorMessage = "ファイルが開かれていません。";
+            if (session->isCancelled.load() || req.epoch < m_currentEpoch.load() || m_stopRequested.load()) {
+                continue;
+            }
+
+            if (clampedStart > clampedEnd || totalFrames == 0 || Fs <= 0.0) {
+                result.frameCount = 0;
+                result.isAggregated = false;
             } else {
-                result.sampleRate = Fs;
-                result.totalFrames = totalFrames;
-                result.channels = channels;
-                result.fullScaleVoltage = fullScale;
-                result.peakAbsPerChannel.assign(channels, 0.0f);
+                size_t totalFramesToRead = static_cast<size_t>(clampedEnd - clampedStart + 1);
+                int numCols = std::max(10, req.pixelWidth);
 
-                double leftTime = req.centerTimeSec - req.timeWindowSec / 2.0;
-                double rightTime = req.centerTimeSec + req.timeWindowSec / 2.0;
-
-                int64_t startFrame = static_cast<int64_t>(std::floor(leftTime * Fs));
-                int64_t endFrame = static_cast<int64_t>(std::ceil(rightTime * Fs));
-
-                int64_t clampedStart = std::max<int64_t>(0, startFrame);
-                int64_t clampedEnd = std::min<int64_t>(static_cast<int64_t>(totalFrames) - 1, endFrame);
-
-                result.validLeftTime = (clampedStart <= clampedEnd && Fs > 0.0)
-                    ? (static_cast<double>(clampedStart) / Fs) : 0.0;
-                result.validRightTime = (clampedStart <= clampedEnd && Fs > 0.0)
-                    ? (static_cast<double>(clampedEnd + 1) / Fs) : 0.0;
-                result.startFrame = clampedStart;
-
-                if (clampedStart > clampedEnd || totalFrames == 0 || Fs <= 0.0) {
-                    result.frameCount = 0;
+                if (totalFramesToRead <= static_cast<size_t>(numCols * 2)) {
+                    // 低密度: Rawサンプルモード
                     result.isAggregated = false;
-                } else {
-                    size_t totalFramesToRead = static_cast<size_t>(clampedEnd - clampedStart + 1);
-                    int numCols = std::max(10, req.pixelWidth);
+                    result.rawSamples.assign(channels, std::vector<float>(totalFramesToRead, 0.0f));
 
-                    if (totalFramesToRead <= static_cast<size_t>(numCols * 2)) {
-                        // 低密度: Rawサンプルモード
-                        result.isAggregated = false;
-                        result.rawSamples.assign(channels, std::vector<float>(totalFramesToRead, 0.0f));
+                    size_t framesRead = 0;
+                    bool readOk = session->reader->ReadFrames(static_cast<uint64_t>(clampedStart), totalFramesToRead, chunkBuffer, framesRead);
 
-                        size_t framesRead = 0;
-                        bool readOk = false;
-                        std::string readErr;
-                        {
-                            std::lock_guard<std::mutex> rLock(m_readerMutex);
-                            if (m_reader && m_reader->IsOpen()) {
-                                readOk = m_reader->ReadFrames(static_cast<uint64_t>(clampedStart), totalFramesToRead, chunkBuffer, framesRead);
-                                if (!readOk) readErr = m_reader->GetLastError();
-                            } else {
-                                readErr = "リーダーが閉じられました";
-                            }
+                    if (!readOk) {
+                        result.hasError = true;
+                        result.error = session->reader->GetLastErrorInfo();
+                        if (!result.error.hasError()) {
+                            result.error = LocalizedError{StringId::ErrReadPastEnd};
                         }
-
-                        if (!readOk) {
-                            result.hasError = true;
-                            result.errorMessage = readErr.empty() ? "波形データの読み出しに失敗しました。" : readErr;
-                        } else {
-                            result.frameCount = framesRead;
-                            for (size_t f = 0; f < framesRead; ++f) {
-                                for (int ch = 0; ch < channels; ++ch) {
-                                    float val = chunkBuffer[f * channels + ch];
-                                    result.rawSamples[ch][f] = val;
-                                    float absVal = std::fabs(val);
-                                    if (absVal > result.peakAbsPerChannel[ch]) {
-                                        result.peakAbsPerChannel[ch] = absVal;
-                                    }
-                                }
-                            }
-                        }
+                        result.errorMessage = session->reader->GetLastError();
                     } else {
-                        // 高密度: Min/Max エンベロープ集約モード
-                        result.isAggregated = true;
-                        result.numColumns = numCols;
-                        result.minPerChannel.assign(channels, std::vector<float>(numCols, 1e9f));
-                        result.maxPerChannel.assign(channels, std::vector<float>(numCols, -1e9f));
-
-                        size_t totalProcessed = 0;
-                        while (totalProcessed < totalFramesToRead) {
-                            // epochが更新された場合、または停止要求がある場合のみ即座に中断
-                            // （同一epoch内の連続要求では処理を中断しない）
-                            if (m_currentEpoch.load() > req.epoch || m_stopRequested.load()) {
-                                isCancelled = true;
-                                break;
-                            }
-
-                            size_t thisChunk = std::min<size_t>(CHUNK_FRAMES, totalFramesToRead - totalProcessed);
-                            uint64_t readPos = static_cast<uint64_t>(clampedStart + totalProcessed);
-                            size_t actualRead = 0;
-                            bool readOk = false;
-                            std::string readErr;
-
-                            // チャンク単位のロック (GUIスレッドのOpenFile/CloseFileをブロックしない)
-                            {
-                                std::lock_guard<std::mutex> rLock(m_readerMutex);
-                                if (m_reader && m_reader->IsOpen()) {
-                                    readOk = m_reader->ReadFrames(readPos, thisChunk, chunkBuffer, actualRead);
-                                    if (!readOk) readErr = m_reader->GetLastError();
-                                } else {
-                                    readErr = "リーダーが閉じられました";
+                        result.frameCount = framesRead;
+                        for (size_t f = 0; f < framesRead; ++f) {
+                            for (int ch = 0; ch < channels; ++ch) {
+                                float val = chunkBuffer[f * channels + ch];
+                                result.rawSamples[ch][f] = val;
+                                float absVal = std::fabs(val);
+                                if (absVal > result.peakAbsPerChannel[ch]) {
+                                    result.peakAbsPerChannel[ch] = absVal;
                                 }
                             }
+                        }
+                    }
+                } else {
+                    // 高密度: Min/Max エンベロープ集約モード
+                    result.isAggregated = true;
+                    result.numColumns = numCols;
+                    result.minPerChannel.assign(channels, std::vector<float>(numCols, 1e9f));
+                    result.maxPerChannel.assign(channels, std::vector<float>(numCols, -1e9f));
 
-                            if (!readOk || actualRead == 0) {
-                                result.hasError = true;
-                                result.errorMessage = readErr.empty() ? "波形データの読み出しに失敗しました。" : readErr;
-                                break;
+                    size_t totalProcessed = 0;
+                    while (totalProcessed < totalFramesToRead) {
+                        if (session->isCancelled.load() || req.epoch < m_currentEpoch.load() || m_stopRequested.load()) {
+                            isCancelled = true;
+                            break;
+                        }
+
+                        if (syncHook) {
+                            syncHook(1, req.epoch);
+                        }
+
+                        if (session->isCancelled.load() || req.epoch < m_currentEpoch.load() || m_stopRequested.load()) {
+                            isCancelled = true;
+                            break;
+                        }
+
+                        size_t thisChunk = std::min<size_t>(CHUNK_FRAMES, totalFramesToRead - totalProcessed);
+                        uint64_t readPos = static_cast<uint64_t>(clampedStart + totalProcessed);
+                        size_t actualRead = 0;
+
+                        bool readOk = session->reader->ReadFrames(readPos, thisChunk, chunkBuffer, actualRead);
+                        if (!readOk || actualRead == 0) {
+                            result.hasError = true;
+                            result.error = session->reader->GetLastErrorInfo();
+                            if (!result.error.hasError()) {
+                                result.error = LocalizedError{StringId::ErrReadPastEnd};
                             }
+                            result.errorMessage = session->reader->GetLastError();
+                            break;
+                        }
 
-                            for (size_t f = 0; f < actualRead; ++f) {
-                                int64_t curFrame = clampedStart + totalProcessed + f;
-                                double t = static_cast<double>(curFrame) / Fs;
-                                int col = static_cast<int>((t - leftTime) / req.timeWindowSec * numCols);
-                                if (col < 0) col = 0;
-                                if (col >= numCols) col = numCols - 1;
+                        for (size_t f = 0; f < actualRead; ++f) {
+                            int64_t curFrame = clampedStart + totalProcessed + f;
+                            double t = static_cast<double>(curFrame) / Fs;
+                            int col = static_cast<int>((t - leftTime) / req.timeWindowSec * numCols);
+                            if (col < 0) col = 0;
+                            if (col >= numCols) col = numCols - 1;
 
-                                for (int ch = 0; ch < channels; ++ch) {
-                                    float val = chunkBuffer[f * channels + ch];
-                                    if (val < result.minPerChannel[ch][col]) {
-                                        result.minPerChannel[ch][col] = val;
-                                    }
-                                    if (val > result.maxPerChannel[ch][col]) {
-                                        result.maxPerChannel[ch][col] = val;
-                                    }
-                                    float absVal = std::fabs(val);
-                                    if (absVal > result.peakAbsPerChannel[ch]) {
-                                        result.peakAbsPerChannel[ch] = absVal;
-                                    }
+                            for (int ch = 0; ch < channels; ++ch) {
+                                float val = chunkBuffer[f * channels + ch];
+                                if (val < result.minPerChannel[ch][col]) {
+                                    result.minPerChannel[ch][col] = val;
                                 }
-                            }
-
-                            totalProcessed += actualRead;
-                            if (actualRead < thisChunk) {
-                                break;
+                                if (val > result.maxPerChannel[ch][col]) {
+                                    result.maxPerChannel[ch][col] = val;
+                                }
+                                float absVal = std::fabs(val);
+                                if (absVal > result.peakAbsPerChannel[ch]) {
+                                    result.peakAbsPerChannel[ch] = absVal;
+                                }
                             }
                         }
 
-                        result.frameCount = totalProcessed;
+                        totalProcessed += actualRead;
+                        if (actualRead < thisChunk) {
+                            break;
+                        }
+                    }
 
-                        // 未通過カラムのクランプ
-                        for (int ch = 0; ch < channels; ++ch) {
-                            for (int c = 0; c < numCols; ++c) {
-                                if (result.minPerChannel[ch][c] > 1e8f) {
-                                    result.minPerChannel[ch][c] = 0.0f;
-                                    result.maxPerChannel[ch][c] = 0.0f;
-                                }
+                    result.frameCount = totalProcessed;
+
+                    // 未通過カラムのクランプ
+                    for (int ch = 0; ch < channels; ++ch) {
+                        for (int c = 0; c < numCols; ++c) {
+                            if (result.minPerChannel[ch][c] > 1e8f) {
+                                result.minPerChannel[ch][c] = 0.0f;
+                                result.maxPerChannel[ch][c] = 0.0f;
                             }
                         }
                     }
                 }
             }
 
-            if (!isCancelled && req.epoch == m_currentEpoch.load()) {
+            if (!isCancelled && !session->isCancelled.load() && req.epoch == m_currentEpoch.load()) {
                 std::lock_guard<std::mutex> resLock(m_resultMutex);
                 if (m_latestResult.epoch < req.epoch || m_latestResult.requestSeq <= req.requestSeq) {
                     m_latestResult = std::move(result);
@@ -405,7 +417,8 @@ void PlaybackLoaderWorker::WorkerLoop() {
             errResult.generation = req.epoch;
             errResult.requestSeq = req.requestSeq;
             errResult.hasError = true;
-            errResult.errorMessage = std::string("再生データ読み出し例外: ") + ex.what();
+            errResult.error = LocalizedError{StringId::ErrConversionException, {ex.what()}};
+            errResult.errorMessage = ex.what();
             std::lock_guard<std::mutex> resLock(m_resultMutex);
             m_latestResult = std::move(errResult);
             m_hasNewResult = true;
@@ -415,7 +428,7 @@ void PlaybackLoaderWorker::WorkerLoop() {
             errResult.generation = req.epoch;
             errResult.requestSeq = req.requestSeq;
             errResult.hasError = true;
-            errResult.errorMessage = "再生データ読み出し中に未知の例外が発生しました。";
+            errResult.error = LocalizedError{StringId::ErrUnknown};
             std::lock_guard<std::mutex> resLock(m_resultMutex);
             m_latestResult = std::move(errResult);
             m_hasNewResult = true;

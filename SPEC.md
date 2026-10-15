@@ -1,3 +1,5 @@
+[English](SPEC.en.md)
+
 # 実装仕様書
 
 基準日：2026-10-14。対象：現在のC++ソース、CMake、Python補助ツール。配布EXEの同一性や全機能の動的検証を示す文書ではありません。
@@ -148,8 +150,11 @@ ConversionPlanで時間範囲・間引き・拡張子・分割数を計画し、
 
 ## 検証と変更管理
 
-CTestにはTestDataLogger、TestConverter、TestSmokeTestを登録しています。実機録音は既定で無効です。`DLOG_ENABLE_HARDWARE_TESTS=ON`（build.ps1では-HardwareTests）でTestAudioHardwareを追加します。機器なしでスキップされる試験の有無も結果に記録してください。スモークテストはCallAfterでイベントループ開始後に操作してCloseしますが、すべての描画・タイマーを網羅しません。
+CTestにはTestDataLogger、TestConverter、および両アプリ×両言語のGUI起動スモークテスト（TestDataLoggerSmokeJa、TestDataLoggerSmokeEn、TestDlogToCsvSmokeJa、TestDlogToCsvSmokeEn）を登録しています。実機録音は既定で無効です。`DLOG_ENABLE_HARDWARE_TESTS=ON`（build.ps1では-HardwareTests）でTestAudioHardwareを追加します。機器なしでスキップされる試験の有無も結果に記録してください。スモークテストはCallAfterでイベントループ開始後に操作してCloseしますが、すべての描画・タイマーを網羅しません。
+
+言語切替はUI表示のみを更新し、DLOGバイナリやCSV出力形式を変更しません。同一DLOGに対するCSV変換結果は100%バイト一致（完全一致）しますが、独立した実機録音セッション間の完全一致は物理クロック差等により保証されません。再生要求はReader・ヘッダを同一セッションオブジェクトへ固定し（PLAY-001）、v2メタデータは必須識別情報の厳格検証（DATA-001）を実施します。校正操作はプレビュー中または停止中に限定され、記録中の換算係数変更は禁止されています（FUNC-001）。
 
 バイナリ配布には本書・開発規約を含めません。ビルダー配布はソースと固定依存定義のみを含み、公式ソースとsubmoduleを取得して再構築します。手順とクリーン検証の範囲はdocs/BUILDING.mdを参照してください。旧3rdpartyへのビルドフォールバックは使用しません。
 
 公開前には、変換計画の組合せ、低速読込と連続シーク、開始失敗、記録停止時の最終欠落集計、破損.partialの非破壊復旧、日本語パスを確認してください。仕様変更時は本書、操作マニュアル、テストを同時に更新します。
+

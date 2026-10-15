@@ -46,7 +46,8 @@ Invoke-WithSafeMappedDrive $project {
     foreach ($name in @('DataLogger.exe','DlogToCsv.exe','build_provenance.json')) { Copy-Item -LiteralPath "$build/$name" -Destination $stage }
     foreach ($name in @('LICENSE','LICENSES.md')) { Copy-Item -LiteralPath "$root/$name" -Destination $stage }
     Copy-Item -LiteralPath "$root/docs/BINARY_README.md" -Destination "$stage/README.md"
-    foreach ($name in @('QUICKSTART.md','REFERENCE_MANUAL.md')) { Copy-Item -LiteralPath "$root/docs/$name" -Destination "$stage/docs/" }
+    Copy-Item -LiteralPath "$root/docs/BINARY_README.en.md" -Destination "$stage/README.en.md"
+    foreach ($name in @('QUICKSTART.md','QUICKSTART.en.md','REFERENCE_MANUAL.md','REFERENCE_MANUAL.en.md')) { Copy-Item -LiteralPath "$root/docs/$name" -Destination "$stage/docs/" }
     Copy-Item -LiteralPath "$root/.deps/install/licenses" -Destination "$stage/licenses" -Recurse
     Assert-MarkdownLinks $stage
     & "$PSScriptRoot/test-packaging.ps1" -Directory $stage -Kind Binary

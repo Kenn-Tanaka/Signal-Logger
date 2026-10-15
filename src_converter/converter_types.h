@@ -1,6 +1,7 @@
 #pragma once
 
 #include "audio/audio_types.h"
+#include "common/localized_strings.h"
 #include <string>
 #include <vector>
 #include <cstdint>
@@ -73,6 +74,7 @@ struct BatchItem {
     double progress = 0.0;                 // 0.0 〜 1.0
     uint64_t convertedFrames = 0;
     std::vector<std::string> outputFiles;  // 分割出力されたファイル一覧
+    LocalizedError error;
     std::string errorMessage;
 };
 

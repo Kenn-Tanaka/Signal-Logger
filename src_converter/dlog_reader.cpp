@@ -231,7 +231,21 @@ std::vector<ChannelMetadata> DlogReader::LoadCompanionMeta(const std::string& fi
     }
 
     if (!mismatchDetected) {
-        if (hasDlogMetadataSection && seenMetaKeys.count("channels") == 0) {
+        if (header.version == DLOG_FORMAT_VERSION) {
+            if (!hasDlogMetadataSection) {
+                mismatchDetected = true;
+                mismatchReason = "v2メタデータセクション欠落 ([DLOG_METADATA])";
+            } else {
+                const char* requiredKeys[] = {"magic", "version", "channels", "native_rate", "start_timestamp_utc"};
+                for (const char* reqKey : requiredKeys) {
+                    if (seenMetaKeys.count(reqKey) == 0) {
+                        mismatchDetected = true;
+                        mismatchReason = std::string("必須メタデータキー欠落: ") + reqKey;
+                        break;
+                    }
+                }
+            }
+        } else if (hasDlogMetadataSection && seenMetaKeys.count("channels") == 0) {
             mismatchDetected = true;
             mismatchReason = "必須メタデータキー欠落: channels";
         }
@@ -253,37 +267,45 @@ std::vector<ChannelMetadata> DlogReader::LoadCompanionMeta(const std::string& fi
 }
 
 
-bool DlogReader::ValidateHeader(const DLogFileHeader& header, std::string& errorMsg) {
+bool DlogReader::ValidateHeader(const DLogFileHeader& header, LocalizedError& outError) {
+    outError.Clear();
     if (std::memcmp(header.magic, "DLOG", 4) != 0) {
-        errorMsg = "マジックナンバーがDLOGではありません";
+        outError = MakeError(StringId::ErrInvalidMagic);
         return false;
     }
     // v1は既存配布サンプルの読込に限り許容し、新規出力はv2とする。
     if (header.version != 1 && header.version != DLOG_FORMAT_VERSION) {
-        errorMsg = "未対応のDLOGバージョンです (version=" + std::to_string(header.version) + ")";
+        outError = MakeError(StringId::ErrUnsupportedVersion, std::to_string(header.version));
         return false;
     }
     if (header.headerSize != sizeof(DLogFileHeader)) {
-        errorMsg = "DLOGヘッダサイズが64バイトではありません";
+        outError = MakeError(StringId::ErrInvalidHeaderSize);
         return false;
     }
     if (header.channels == 0 || header.channels > MAX_AUDIO_CHANNELS) {
-        errorMsg = "チャネル数が1～8の範囲外です (channels=" + std::to_string(header.channels) + ")";
+        outError = MakeError(StringId::ErrInvalidChannels, std::to_string(header.channels));
         return false;
     }
     if (header.sampleFormat != static_cast<uint32_t>(SampleFormatType::Float32)) {
-        errorMsg = "Float32以外のサンプル形式には対応していません";
+        outError = MakeError(StringId::ErrUnsupportedSampleFormat);
         return false;
     }
     if (header.sampleRate == 0 || header.nativeRate == 0 || header.decimationFactor == 0) {
-        errorMsg = "サンプルレートまたはデシメーション係数が不正です";
+        outError = MakeError(StringId::ErrInvalidSampleRateOrDecimation);
         return false;
     }
     if (std::isnan(header.fullScaleVoltage) || std::isinf(header.fullScaleVoltage) || header.fullScaleVoltage <= 0.0) {
-        errorMsg = "フルスケール電圧が不正です (正の有限値である必要があります)";
+        outError = MakeError(StringId::ErrInvalidFullScaleVoltage);
         return false;
     }
     return true;
+}
+
+bool DlogReader::ValidateHeader(const DLogFileHeader& header, std::string& errorMsg) {
+    LocalizedError err;
+    bool ok = ValidateHeader(header, err);
+    errorMsg = err.FormatCurrent();
+    return ok;
 }
 
 DlogReader::DlogReader() = default;
@@ -294,44 +316,44 @@ DlogReader::~DlogReader() {
 
 bool DlogReader::Open(const std::string& filePath) {
     Close();
-    m_lastError.clear();
+    m_lastErrorInfo.Clear();
 
-    const auto fail = [this](const std::string& message) {
-        m_lastError = message;
+    const auto fail = [this](const LocalizedError& err) {
+        m_lastErrorInfo = err;
         Close();
         return false;
     };
 
     if (filePath.find(".partial") != std::string::npos) {
-        return fail("書き込み中の一時ファイル (.partial) は対象外です");
+        return fail(MakeError(StringId::ErrFileOpenFailed, filePath));
     }
 
     try {
         m_fileStream.open(std::filesystem::u8path(filePath), std::ios::in | std::ios::binary);
         if (!m_fileStream.is_open()) {
-            return fail("ファイルを開けません");
+            return fail(MakeError(StringId::ErrFileOpenFailed, filePath));
         }
 
         // ファイルサイズ取得
         m_fileStream.seekg(0, std::ios::end);
         const std::streampos endPos = m_fileStream.tellg();
         if (endPos < 0) {
-            return fail("ファイルサイズを取得できません");
+            return fail(MakeError(StringId::ErrFileOpenFailed, filePath));
         }
         m_fileSizeBytes = static_cast<uint64_t>(endPos);
         m_fileStream.seekg(0, std::ios::beg);
 
         if (m_fileSizeBytes < sizeof(DLogFileHeader)) {
-            return fail("64バイトのDLOGヘッダがありません");
+            return fail(MakeError(StringId::ErrFileSmallerThanHeader));
         }
 
         // ヘッダ読み込み
         m_fileStream.read(reinterpret_cast<char*>(&m_header), sizeof(m_header));
         if (m_fileStream.gcount() != static_cast<std::streamsize>(sizeof(m_header))) {
-            return fail("DLOGヘッダを最後まで読み込めません");
+            return fail(MakeError(StringId::ErrHeaderReadFailed));
         }
 
-        std::string validErr;
+        LocalizedError validErr;
         if (!ValidateHeader(m_header, validErr)) {
             return fail(validErr);
         }
@@ -339,16 +361,16 @@ bool DlogReader::Open(const std::string& filePath) {
         const uint64_t dataBytes = m_fileSizeBytes - sizeof(DLogFileHeader);
         const uint64_t bytesPerFrame = static_cast<uint64_t>(m_header.channels) * sizeof(float);
         if (dataBytes % bytesPerFrame != 0) {
-            return fail("データ部の末尾がフレーム境界に揃っていません");
+            return fail(MakeError(StringId::ErrPartialFrameDiscarded, std::to_string(dataBytes % bytesPerFrame)));
         }
         m_totalFrames = dataBytes / bytesPerFrame;
         if (m_totalFrames == 0) {
-            return fail("データが空です（0フレーム）");
+            return fail(MakeError(StringId::ErrZeroFramesInFile));
         }
 
         const double effectiveRate = GetDLogEffectiveSampleRate(m_header);
         if (!(effectiveRate > 0.0) || !std::isfinite(effectiveRate)) {
-            return fail("実効サンプルレートが不正です");
+            return fail(MakeError(StringId::ErrInvalidSampleRateOrDecimation));
         }
         m_durationSec = static_cast<double>(m_totalFrames) / effectiveRate;
         m_currentFrameIndex = 0;
@@ -357,9 +379,10 @@ bool DlogReader::Open(const std::string& filePath) {
 
         return true;
     } catch (const std::exception& ex) {
-        return fail(std::string("DLOGファイル処理中の例外: ") + ex.what());
+        LocalizedError err = MakeError(StringId::ErrConversionException, ex.what());
+        return fail(err);
     } catch (...) {
-        return fail("DLOGファイル処理中に不明な例外が発生しました");
+        return fail(MakeError(StringId::ErrUnknown));
     }
 }
 
@@ -405,7 +428,7 @@ bool DlogReader::ReadNextChunk(std::vector<float>& buffer, size_t maxFrames, siz
     }
 
     if (framesToRead > std::numeric_limits<size_t>::max() / static_cast<size_t>(m_header.channels)) {
-        m_lastError = "読込チャンクサイズが大きすぎます";
+        m_lastErrorInfo = MakeError(StringId::ErrChunkSizeTooLarge);
         return false;
     }
     size_t samplesToRead = framesToRead * static_cast<size_t>(m_header.channels);
@@ -415,7 +438,7 @@ bool DlogReader::ReadNextChunk(std::vector<float>& buffer, size_t maxFrames, siz
 
     size_t bytesToRead = samplesToRead * sizeof(float);
     if (bytesToRead > static_cast<size_t>(std::numeric_limits<std::streamsize>::max())) {
-        m_lastError = "読込要求サイズがストリーム上限を超えています";
+        m_lastErrorInfo = MakeError(StringId::ErrReadPastEnd);
         return false;
     }
     m_fileStream.read(reinterpret_cast<char*>(buffer.data()), bytesToRead);
@@ -424,7 +447,7 @@ bool DlogReader::ReadNextChunk(std::vector<float>& buffer, size_t maxFrames, siz
     framesRead = static_cast<size_t>(actualBytes) / bytesPerFrame;
 
     if (actualBytes != static_cast<std::streamsize>(bytesToRead)) {
-        m_lastError = "PCMデータを最後まで読み込めません";
+        m_lastErrorInfo = MakeError(StringId::ErrPcmReadIncomplete);
         return false;
     }
 
@@ -451,6 +474,7 @@ bool DlogReader::InspectFile(const std::string& filePath, BatchItem& item) {
     DlogReader reader;
     if (!reader.Open(filePath)) {
         item.status = BatchStatus::Error;
+        item.error = reader.GetLastErrorInfo();
         item.errorMessage = reader.GetLastError().empty()
             ? "無効なDLOGファイルまたは開けません"
             : reader.GetLastError();
@@ -470,25 +494,26 @@ bool DlogReader::InspectFile(const std::string& filePath, BatchItem& item) {
 
 bool DlogReader::RecoverPartialFile(const std::string& partialPath,
                                    std::string& outRecoveredPath,
-                                   std::string& errorMsg,
+                                   LocalizedError& outError,
                                    const RecoveryProgressCallback& progressCallback) {
+    outError.Clear();
     std::error_code ec;
     std::filesystem::path p = std::filesystem::u8path(partialPath);
     if (!std::filesystem::exists(p, ec) || !std::filesystem::is_regular_file(p, ec)) {
-        errorMsg = "対象の .partial ファイルが見つかりません: " + partialPath;
+        outError = MakeError(StringId::ErrFileNotFound, partialPath);
         return false;
     }
 
     uint64_t fileSize = std::filesystem::file_size(p, ec);
     if (ec || fileSize < sizeof(DLogFileHeader)) {
-        errorMsg = "ファイルサイズがDLOGヘッダ (64バイト) 未満です";
+        outError = MakeError(StringId::ErrFileSmallerThanHeader);
         return false;
     }
 
     // 読み込み用ストリームを開く（入力元は完全なリードオンリー）
     std::ifstream in(p, std::ios::binary);
     if (!in.is_open()) {
-        errorMsg = "ファイルを開けません (読み取り権限を確認してください)";
+        outError = MakeError(StringId::ErrFileOpenFailed, partialPath);
         return false;
     }
 
@@ -496,11 +521,11 @@ bool DlogReader::RecoverPartialFile(const std::string& partialPath,
     DLogFileHeader header{};
     in.read(reinterpret_cast<char*>(&header), sizeof(header));
     if (in.gcount() != sizeof(header)) {
-        errorMsg = "ヘッダを読み込めません";
+        outError = MakeError(StringId::ErrHeaderReadFailed);
         return false;
     }
 
-    if (!ValidateHeader(header, errorMsg)) {
+    if (!ValidateHeader(header, outError)) {
         return false;
     }
 
@@ -508,7 +533,7 @@ bool DlogReader::RecoverPartialFile(const std::string& partialPath,
     uint64_t dataBytes = fileSize - sizeof(DLogFileHeader);
     uint64_t validFrames = dataBytes / bytesPerFrame;
     if (validFrames == 0) {
-        errorMsg = "有効なPCMフレームが含まれていません (データ部が空です)";
+        outError = MakeError(StringId::ErrZeroFramesInFile);
         return false;
     }
 
@@ -552,13 +577,13 @@ bool DlogReader::RecoverPartialFile(const std::string& partialPath,
         tempRecPath += L".rec_temp." + std::to_wstring(suffix);
     }
     if (tempEc) {
-        errorMsg = "復旧用一時ファイル名を決定できません";
+        outError = MakeError(StringId::ErrTempFileCreationFailed, tempRecPath.u8string());
         return false;
     }
 
     std::ofstream out(tempRecPath, std::ios::binary | std::ios::trunc);
     if (!out.is_open()) {
-        errorMsg = "復旧先ファイルを作成できません (書き込み権限またはパスを確認してください): " + tempRecPath.u8string();
+        outError = MakeError(StringId::ErrTempFileCreationFailed, tempRecPath.u8string());
         return false;
     }
 
@@ -567,7 +592,7 @@ bool DlogReader::RecoverPartialFile(const std::string& partialPath,
     if (!out.good()) {
         out.close();
         std::filesystem::remove(tempRecPath, ec);
-        errorMsg = "復旧先ファイルへのヘッダ書き込みに失敗しました";
+        outError = MakeError(StringId::ErrHeaderWriteFailed);
         return false;
     }
 
@@ -585,7 +610,7 @@ bool DlogReader::RecoverPartialFile(const std::string& partialPath,
             out.close();
             in.close();
             std::filesystem::remove(tempRecPath, ec);
-            errorMsg = "復旧データの書き込み中にI/Oエラーが発生しました";
+            outError = MakeError(StringId::ErrDataWriteFailed);
             return false;
         }
         remainingBytes -= static_cast<uint64_t>(bytesRead);
@@ -596,7 +621,7 @@ bool DlogReader::RecoverPartialFile(const std::string& partialPath,
                 out.close();
                 in.close();
                 std::filesystem::remove(tempRecPath, ec);
-                errorMsg = "ユーザーによって復旧がキャンセルされました";
+                outError = MakeError(StringId::ErrUserCanceled);
                 return false;
             }
         }
@@ -606,7 +631,7 @@ bool DlogReader::RecoverPartialFile(const std::string& partialPath,
         out.close();
         in.close();
         std::filesystem::remove(tempRecPath, ec);
-        errorMsg = "復旧データのフラッシュに失敗しました";
+        outError = MakeError(StringId::ErrFlushFailed);
         return false;
     }
     out.close();
@@ -617,7 +642,7 @@ bool DlogReader::RecoverPartialFile(const std::string& partialPath,
     std::filesystem::rename(tempRecPath, targetPath, ec);
     if (ec) {
         std::filesystem::remove(tempRecPath, ec);
-        errorMsg = "復旧確定ファイルへのリネームに失敗しました: " + ec.message();
+        outError = MakeError(StringId::ErrRenameFailed, ec.message());
         return false;
     }
 
@@ -625,7 +650,7 @@ bool DlogReader::RecoverPartialFile(const std::string& partialPath,
     DlogReader verifier;
     if (!verifier.Open(targetPath.u8string())) {
         std::filesystem::remove(targetPath, ec);
-        errorMsg = "復旧したファイルの自己検証に失敗しました: " + verifier.GetLastError();
+        outError = MakeError(StringId::ErrVerificationFailed, verifier.GetLastError());
         return false;
     }
     verifier.Close();
@@ -648,6 +673,16 @@ bool DlogReader::RecoverPartialFile(const std::string& partialPath,
 
     outRecoveredPath = targetPath.u8string();
     return true;
+}
+
+bool DlogReader::RecoverPartialFile(const std::string& partialPath,
+                                   std::string& outRecoveredPath,
+                                   std::string& errorMsg,
+                                   const RecoveryProgressCallback& progressCallback) {
+    LocalizedError err;
+    bool ok = RecoverPartialFile(partialPath, outRecoveredPath, err, progressCallback);
+    errorMsg = err.FormatCurrent();
+    return ok;
 }
 
 

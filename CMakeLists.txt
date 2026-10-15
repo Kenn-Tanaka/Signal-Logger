@@ -111,9 +111,21 @@ set(COMMON_LINK_OPTIONS
 )
 
 # ========================================================
+# 共通ローカライズ・言語設定ソース
+set(COMMON_SOURCES
+    src/common/ui_language.h
+    src/common/ui_language.cpp
+    src/common/language_preferences.h
+    src/common/language_preferences.cpp
+    src/common/localized_strings.h
+    src/common/localized_strings.cpp
+)
+
+# ========================================================
 # 1. データロガー本体 (DataLogger.exe)
 # ========================================================
 set(LOGGER_SOURCES
+    ${COMMON_SOURCES}
     src/main.cpp
     src/app.h
     src/app.cpp
@@ -150,6 +162,7 @@ target_link_options(DataLogger PRIVATE ${COMMON_LINK_OPTIONS})
 # 2. DLOG to CSV バッチ変換ツール (DlogToCsv.exe)
 # ========================================================
 set(CONVERTER_SOURCES
+    ${COMMON_SOURCES}
     src_converter/main_converter.cpp
     src_converter/converter_app.h
     src_converter/converter_app.cpp
@@ -177,6 +190,7 @@ enable_testing()
 
 # 3.1 データロガーコアテスト (test_dlog)
 set(TEST_DLOG_SOURCES
+    ${COMMON_SOURCES}
     tests/test_dlog.cpp
     src/audio/audio_device_mgr.cpp
     src/dsp/decimator_processor.cpp
@@ -217,6 +231,7 @@ endif()
 
 # 3.2 コンバータコアテスト (test_converter)
 set(TEST_CONVERTER_SOURCES
+    ${COMMON_SOURCES}
     tests/test_converter.cpp
     src_converter/dlog_reader.cpp
     src_converter/csv_writer.cpp
@@ -239,6 +254,15 @@ target_link_options(test_converter PRIVATE
 
 add_test(NAME TestConverter COMMAND $<TARGET_FILE:test_converter>)
 
-# 3.3 GUI 起動・初期化スモークテスト (DataLogger --smoke-test)
-add_test(NAME TestSmokeTest COMMAND $<TARGET_FILE:DataLogger> --smoke-test)
-set_tests_properties(TestSmokeTest PROPERTIES TIMEOUT 15)
+# 3.3 GUI 起動・初期化スモークテスト (DataLogger / DlogToCsv × 日本語 / 英語)
+add_test(NAME TestDataLoggerSmokeJa COMMAND $<TARGET_FILE:DataLogger> --smoke-test --language=ja)
+set_tests_properties(TestDataLoggerSmokeJa PROPERTIES TIMEOUT 15)
+
+add_test(NAME TestDataLoggerSmokeEn COMMAND $<TARGET_FILE:DataLogger> --smoke-test --language=en)
+set_tests_properties(TestDataLoggerSmokeEn PROPERTIES TIMEOUT 15)
+
+add_test(NAME TestDlogToCsvSmokeJa COMMAND $<TARGET_FILE:DlogToCsv> --smoke-test --language=ja)
+set_tests_properties(TestDlogToCsvSmokeJa PROPERTIES TIMEOUT 15)
+
+add_test(NAME TestDlogToCsvSmokeEn COMMAND $<TARGET_FILE:DlogToCsv> --smoke-test --language=en)
+set_tests_properties(TestDlogToCsvSmokeEn PROPERTIES TIMEOUT 15)

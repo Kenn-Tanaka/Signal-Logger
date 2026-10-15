@@ -115,7 +115,8 @@ BatchConverterWorker::~BatchConverterWorker() {
 
 bool BatchConverterWorker::CheckCollisions(const std::vector<BatchItem>& items,
                                            const ConversionOptions& options,
-                                           std::string& errorMsg) {
+                                           LocalizedError& outError) {
+    outError.Clear();
     // 1. 全入力ファイルのキーを収集
     std::map<std::string, std::string> allInputKeys;
     for (const auto& item : items) {
@@ -141,27 +142,30 @@ bool BatchConverterWorker::CheckCollisions(const std::vector<BatchItem>& items,
             // 全入力ファイルとの衝突検査
             auto inIt = allInputKeys.find(outKey);
             if (inIt != allInputKeys.end()) {
-                errorMsg = "出力ファイルが入力元ファイルと重複しています: " + plannedPathStr;
+                outError = MakeError(StringId::FileCollisionWithInput, plannedPathStr);
                 return false;
             }
 
             // バッチ内での出力同士の衝突検査
             auto claimIt = claimedOutputs.find(outKey);
             if (claimIt != claimedOutputs.end()) {
-                std::string claimInKey = NormalizePathKey(std::filesystem::u8path(claimIt->second));
-                if (claimInKey != currentInKey) {
-                    errorMsg = "バッチ変換内で異なる入力ファイル同士の出力ファイル名重複（衝突）が検出されました: " + plannedPathStr;
-                    return false;
-                } else {
-                    errorMsg = "同一入力ファイルの出力分割間で重複が検出されました: " + plannedPathStr;
-                    return false;
-                }
+                outError = MakeError(StringId::FileCollisionDuplicateOutput, plannedPathStr);
+                return false;
             }
 
             claimedOutputs[outKey] = item.inputFilePath;
         }
     }
     return true;
+}
+
+bool BatchConverterWorker::CheckCollisions(const std::vector<BatchItem>& items,
+                                           const ConversionOptions& options,
+                                           std::string& errorMsg) {
+    LocalizedError err;
+    bool ok = CheckCollisions(items, options, err);
+    errorMsg = err.FormatCurrent();
+    return ok;
 }
 
 
@@ -276,9 +280,11 @@ void BatchConverterWorker::WorkerLoop() {
         try {
             success = ConvertSingleFile(itemCopy);
         } catch (const std::exception& ex) {
-            itemCopy.errorMessage = std::string("変換処理中の例外: ") + ex.what();
+            itemCopy.error = MakeError(StringId::ErrConversionException, ex.what());
+            itemCopy.errorMessage = itemCopy.error.FormatCurrent();
         } catch (...) {
-            itemCopy.errorMessage = "変換処理中に不明な例外が発生しました";
+            itemCopy.error = MakeError(StringId::ErrUnknown);
+            itemCopy.errorMessage = itemCopy.error.FormatCurrent();
         }
 
         {
@@ -319,16 +325,19 @@ void BatchConverterWorker::WorkerLoop() {
 bool BatchConverterWorker::ConvertSingleFile(BatchItem& item) {
     DlogReader reader;
     if (!reader.Open(item.inputFilePath)) {
-        item.errorMessage = reader.GetLastError().empty()
-            ? "ファイルをオープンできません"
-            : reader.GetLastError();
+        item.error = reader.GetLastErrorInfo();
+        if (!item.error.HasError()) {
+            item.error = MakeError(StringId::ErrFileOpenFailed, item.inputFilePath);
+        }
+        item.errorMessage = item.error.FormatCurrent();
         return false;
     }
 
     const DLogFileHeader& header = reader.GetHeader();
     uint64_t totalFrames = reader.GetTotalFrames();
     if (totalFrames == 0) {
-        item.errorMessage = "データフレームが空です";
+        item.error = MakeError(StringId::ErrZeroFramesInFile);
+        item.errorMessage = item.error.FormatCurrent();
         return false;
     }
 
@@ -337,11 +346,13 @@ bool BatchConverterWorker::ConvertSingleFile(BatchItem& item) {
 
     if (m_options.enableTimeRange) {
         if (plan.startFrame >= plan.endFrame) {
-            item.errorMessage = "時間範囲指定が不正です";
+            item.error = MakeError(StringId::InvalidTimeRangeStartGteEnd);
+            item.errorMessage = item.error.FormatCurrent();
             return false;
         }
         if (!reader.SeekToFrame(plan.startFrame)) {
-            item.errorMessage = "指定した開始位置へシークできません";
+            item.error = MakeError(StringId::ErrSeekFailed);
+            item.errorMessage = item.error.FormatCurrent();
             return false;
         }
     }
@@ -357,7 +368,8 @@ bool BatchConverterWorker::ConvertSingleFile(BatchItem& item) {
 
     CsvWriter writer;
     if (!writer.Initialize(plan.baseOutputDir, plan.baseFileName, fileOptions, header, plan.willSplit, plan.totalParts, plan.branchDigits)) {
-        item.errorMessage = "CSV出力ファイルを作成できません";
+        item.error = MakeError(StringId::ErrCsvCreateFailed, plan.baseFileName);
+        item.errorMessage = item.error.FormatCurrent();
         return false;
     }
 
@@ -373,16 +385,19 @@ bool BatchConverterWorker::ConvertSingleFile(BatchItem& item) {
             item.convertedFrames = processedFramesInTarget;
             item.progress = static_cast<double>(processedFramesInTarget) /
                             static_cast<double>(targetFrames);
-            item.errorMessage = "ユーザー操作により中断されました";
+            item.error = MakeError(StringId::ErrUserCanceled);
+            item.errorMessage = item.error.FormatCurrent();
             return false;
         }
 
         size_t framesToReadThisTime = std::min<uint64_t>(FRAMES_PER_CHUNK, targetFrames - processedFramesInTarget);
         size_t framesRead = 0;
         if (!reader.ReadNextChunk(chunkBuffer, framesToReadThisTime, framesRead) || framesRead == 0) {
-            item.errorMessage = reader.GetLastError().empty()
-                ? "DLOGデータを最後まで読み込めません"
-                : reader.GetLastError();
+            item.error = reader.GetLastErrorInfo();
+            if (!item.error.HasError()) {
+                item.error = MakeError(StringId::ErrPcmReadIncomplete);
+            }
+            item.errorMessage = item.error.FormatCurrent();
             writer.Abort();
             item.outputFiles = writer.GetGeneratedFiles();
             item.convertedFrames = processedFramesInTarget;
@@ -396,9 +411,8 @@ bool BatchConverterWorker::ConvertSingleFile(BatchItem& item) {
             if ((processedFramesInTarget + f) % static_cast<uint64_t>(step) == 0) {
                 const float* samplesPtr = &chunkBuffer[f * channelCount];
                 if (!writer.WriteRow(currentAbsoluteFrame, samplesPtr, channelCount)) {
-                    item.errorMessage = writer.GetLastError().empty()
-                        ? "CSVデータを書き込めません"
-                        : writer.GetLastError();
+                    item.error = MakeError(StringId::ErrDataWriteFailed);
+                    item.errorMessage = item.error.FormatCurrent();
                     writer.Abort();
                     item.outputFiles = writer.GetGeneratedFiles();
                     item.convertedFrames = processedFramesInTarget + f;
@@ -416,7 +430,8 @@ bool BatchConverterWorker::ConvertSingleFile(BatchItem& item) {
     }
 
     if (processedFramesInTarget != targetFrames) {
-        item.errorMessage = "DLOGデータが予定フレーム数より前に終了しました";
+        item.error = MakeError(StringId::ErrPrematureEof);
+        item.errorMessage = item.error.FormatCurrent();
         writer.Abort();
         item.outputFiles = writer.GetGeneratedFiles();
         item.convertedFrames = processedFramesInTarget;
@@ -426,9 +441,8 @@ bool BatchConverterWorker::ConvertSingleFile(BatchItem& item) {
     }
 
     if (!writer.Finish()) {
-        item.errorMessage = writer.GetLastError().empty()
-            ? "CSVファイルを確定できません"
-            : writer.GetLastError();
+        item.error = MakeError(StringId::ErrFlushFailed);
+        item.errorMessage = item.error.FormatCurrent();
         item.outputFiles = writer.GetGeneratedFiles();
         item.convertedFrames = processedFramesInTarget;
         item.progress = static_cast<double>(processedFramesInTarget) /

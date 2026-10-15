@@ -9,7 +9,25 @@
 #include <string>
 #include <vector>
 
+#include <functional>
+#include <memory>
+
 namespace dlog {
+
+struct PlaybackSession {
+    uint64_t epoch = 0;
+    std::string filePath;
+    DLogFileHeader header{};
+    std::vector<ChannelMetadata> channelMetadata;
+    uint64_t totalFrames = 0;
+    double durationSec = 0.0;
+    double sampleRate = 0.0;
+    int channels = 0;
+    double fullScaleVoltage = 1.0;
+    uint64_t fileSize = 0;
+    std::shared_ptr<DlogReader> reader;
+    std::atomic<bool> isCancelled{false};
+};
 
 class PlaybackLoaderWorker {
 public:
@@ -20,9 +38,10 @@ public:
      * @brief DLOGファイルを開く
      * @param filePath ファイルパス
      * @param errorMsg 失敗時のエラーメッセージ
+     * @param outError 失敗時の構造化エラー情報 (任意)
      * @return 成功したか
      */
-    bool OpenFile(const std::string& filePath, std::string& errorMsg);
+    bool OpenFile(const std::string& filePath, std::string& errorMsg, LocalizedError* outError = nullptr);
 
     /**
      * @brief ファイルを閉じる
@@ -77,6 +96,15 @@ public:
      */
     void Stop();
 
+    /**
+     * @brief テスト用: チャンク読込前後の同期ポイントフック
+     * stage: 0=読込開始前, 1=チャンクループ内
+     */
+    void SetTestSyncHook(std::function<void(int stage, uint64_t epoch)> hook) {
+        std::lock_guard<std::mutex> lock(m_requestMutex);
+        m_testSyncHook = std::move(hook);
+    }
+
 private:
     void WorkerLoop();
 
@@ -97,9 +125,8 @@ private:
     mutable std::mutex m_fileInfoMutex;
     PlaybackFileInfo m_fileInfo;
 
-    mutable std::mutex m_readerMutex;
-    std::unique_ptr<DlogReader> m_reader;
-    std::string m_filePath;
+    mutable std::mutex m_sessionMutex;
+    std::shared_ptr<PlaybackSession> m_activeSession;
 
     std::thread m_thread;
     std::mutex m_requestMutex;
@@ -114,6 +141,8 @@ private:
     std::mutex m_resultMutex;
     bool m_hasNewResult = false;
     PlaybackWindowData m_latestResult;
+
+    std::function<void(int stage, uint64_t epoch)> m_testSyncHook;
 };
 
 } // namespace dlog

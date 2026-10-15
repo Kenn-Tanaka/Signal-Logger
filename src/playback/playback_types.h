@@ -1,11 +1,15 @@
 #pragma once
 
 #include "audio/audio_types.h"
+#include "common/localized_strings.h"
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <memory>
 
 namespace dlog {
+
+struct PlaybackSession;
 
 // 再生要求パラメータ (GUI -> ワーカースレッド)
 struct PlaybackRequest {
@@ -15,6 +19,7 @@ struct PlaybackRequest {
     double centerTimeSec = 0.0;    // 要求中心時刻 (秒)
     double timeWindowSec = 2.0;    // 表示時間幅 (秒)
     int pixelWidth = 1000;         // 画面ピクセル幅 (Min/Max集約用)
+    std::shared_ptr<PlaybackSession> session;
 };
 
 // 再生用ウィンドウ描画データ (ワーカースレッド -> GUI)
@@ -49,6 +54,7 @@ struct PlaybackWindowData {
 
     bool isLoading = false;
     bool hasError = false;
+    LocalizedError error;
     std::string errorMessage;
 };
 

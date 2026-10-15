@@ -1,10 +1,13 @@
 #include "ui/main_frame.h"
+#include "common/localized_strings.h"
+#include "common/ui_language.h"
 #include <wx/msgdlg.h>
 #include <wx/filedlg.h>
 #include <wx/textdlg.h>
 #include <wx/statbox.h>
 #include <wx/datetime.h>
 #include <wx/filename.h>
+#include <wx/menu.h>
 #include <fstream>
 #include <filesystem>
 #include <iomanip>
@@ -16,21 +19,20 @@ namespace dlog {
 class ChannelConfigDialog : public wxDialog {
 public:
     ChannelConfigDialog(wxWindow* parent, const std::vector<ChannelMetadata>& meta, int channelCount)
-        : wxDialog(parent, wxID_ANY, wxT("チャネル名称・単位設定"), wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
+        : wxDialog(parent, wxID_ANY, TrWx(StringId::ChannelConfigTitle), wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
           m_meta(meta), m_channelCount(channelCount) {
 
         auto* mainSizer = new wxBoxSizer(wxVERTICAL);
-        auto* descText = new wxStaticText(this, wxID_ANY,
-            wxT("各チャネルの計測信号名（例: V_bat, 歪みゲージ, 負荷電流）および物理単位（例: V, mV, A, kPa）を設定します。\n設定内容は波形画面およびエクスポートされるCSVヘッダに反映されます。"));
+        auto* descText = new wxStaticText(this, wxID_ANY, TrWx(StringId::ChannelConfigDesc));
         descText->Wrap(420);
         mainSizer->Add(descText, 0, wxALL, 10);
 
         auto* grid = new wxFlexGridSizer(m_channelCount + 1, 3, 6, 10);
         grid->AddGrowableCol(1, 1);
 
-        grid->Add(new wxStaticText(this, wxID_ANY, wxT("チャネル")), 0, wxALIGN_CENTER_VERTICAL);
-        grid->Add(new wxStaticText(this, wxID_ANY, wxT("信号名称 (Label)")), 0, wxALIGN_CENTER_VERTICAL);
-        grid->Add(new wxStaticText(this, wxID_ANY, wxT("物理単位 (Unit)")), 0, wxALIGN_CENTER_VERTICAL);
+        grid->Add(new wxStaticText(this, wxID_ANY, TrWx(StringId::ChannelColChannel)), 0, wxALIGN_CENTER_VERTICAL);
+        grid->Add(new wxStaticText(this, wxID_ANY, TrWx(StringId::ChannelColLabel)), 0, wxALIGN_CENTER_VERTICAL);
+        grid->Add(new wxStaticText(this, wxID_ANY, TrWx(StringId::ChannelColUnit)), 0, wxALIGN_CENTER_VERTICAL);
 
         if (m_meta.size() < static_cast<size_t>(m_channelCount)) {
             m_meta.resize(m_channelCount);
@@ -87,6 +89,8 @@ private:
 };
 
 wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
+    EVT_MENU(ID_LANG_JA, MainFrame::OnLanguageSelectJa)
+    EVT_MENU(ID_LANG_EN, MainFrame::OnLanguageSelectEn)
     EVT_NOTEBOOK_PAGE_CHANGING(ID_MODE_NOTEBOOK, MainFrame::OnModeChanging)
     EVT_NOTEBOOK_PAGE_CHANGED(ID_MODE_NOTEBOOK, MainFrame::OnModeChanged)
     EVT_CHOICE(ID_DEVICE_CHOICE, MainFrame::OnDeviceSelect)
@@ -167,6 +171,14 @@ MainFrame::~MainFrame() {
 void MainFrame::InitUI() {
     SetMinSize(wxSize(850, 620));
 
+    // メニューバー: 言語 / Language
+    auto* menuBar = new wxMenuBar();
+    auto* langMenu = new wxMenu();
+    m_menuLangJa = langMenu->AppendRadioItem(ID_LANG_JA, wxT("日本語"));
+    m_menuLangEn = langMenu->AppendRadioItem(ID_LANG_EN, wxT("English"));
+    menuBar->Append(langMenu, wxT("言語 / Language"));
+    SetMenuBar(menuBar);
+
     auto* mainSizer = new wxBoxSizer(wxVERTICAL);
 
     // --- 上部: モード切替ノートブック ---
@@ -177,20 +189,22 @@ void MainFrame::InitUI() {
     // ========================================================
     m_panelLive = new wxPanel(m_modeNotebook);
     auto* liveMainSizer = new wxBoxSizer(wxVERTICAL);
-    auto* ctrlBox = new wxStaticBox(m_panelLive, wxID_ANY, wxT(" 設定・コントロール "));
-    auto* ctrlSizer = new wxStaticBoxSizer(ctrlBox, wxVERTICAL);
+    m_ctrlBox = new wxStaticBox(m_panelLive, wxID_ANY, wxT(" 設定・コントロール "));
+    auto* ctrlSizer = new wxStaticBoxSizer(m_ctrlBox, wxVERTICAL);
 
     // 1行目: デバイス設定 & チャネル & レート
     auto* row1Sizer = new wxBoxSizer(wxHORIZONTAL);
 
-    row1Sizer->Add(new wxStaticText(m_panelLive, wxID_ANY, wxT("入力デバイス:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblInputDevice = new wxStaticText(m_panelLive, wxID_ANY, wxT("入力デバイス:"));
+    row1Sizer->Add(m_lblInputDevice, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     m_choiceDevice = new wxChoice(m_panelLive, ID_DEVICE_CHOICE, wxDefaultPosition, wxSize(240, -1));
     row1Sizer->Add(m_choiceDevice, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
 
     m_btnRefreshDevices = new wxButton(m_panelLive, ID_REFRESH_DEVICES, wxT("更新"), wxDefaultPosition, wxSize(50, -1));
     row1Sizer->Add(m_btnRefreshDevices, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
 
-    row1Sizer->Add(new wxStaticText(m_panelLive, wxID_ANY, wxT("チャネル数:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblChannels = new wxStaticText(m_panelLive, wxID_ANY, wxT("チャネル数:"));
+    row1Sizer->Add(m_lblChannels, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     m_choiceChannels = new wxChoice(m_panelLive, ID_CHANNEL_CHOICE, wxDefaultPosition, wxSize(110, -1));
     row1Sizer->Add(m_choiceChannels, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
 
@@ -198,7 +212,8 @@ void MainFrame::InitUI() {
     m_btnChannelConfig->SetToolTip(wxT("各チャネルの信号名称および物理単位を設定します"));
     row1Sizer->Add(m_btnChannelConfig, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
 
-    row1Sizer->Add(new wxStaticText(m_panelLive, wxID_ANY, wxT("入力レート:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblSampleRate = new wxStaticText(m_panelLive, wxID_ANY, wxT("入力レート:"));
+    row1Sizer->Add(m_lblSampleRate, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     m_choiceSampleRate = new wxChoice(m_panelLive, ID_RATE_CHOICE, wxDefaultPosition, wxSize(120, -1));
     row1Sizer->Add(m_choiceSampleRate, 0, wxALIGN_CENTER_VERTICAL, 0);
 
@@ -207,7 +222,8 @@ void MainFrame::InitUI() {
     // 2行目: ソフトウェアデシメーション & 目標レート & フルスケール電圧・CAL校正 (FUNC-001, FUNC-002)
     auto* row2Sizer = new wxBoxSizer(wxHORIZONTAL);
 
-    row2Sizer->Add(new wxStaticText(m_panelLive, wxID_ANY, wxT("デシメーション:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblDecimation = new wxStaticText(m_panelLive, wxID_ANY, wxT("デシメーション:"));
+    row2Sizer->Add(m_lblDecimation, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     m_choiceDecimation = new wxChoice(m_panelLive, ID_DECIMATION_CHOICE, wxDefaultPosition, wxSize(155, -1));
     UpdateDecimationChoices();
     m_choiceDecimation->SetSelection(1); // 1/2 デフォルト
@@ -226,7 +242,8 @@ void MainFrame::InitUI() {
     row2Sizer->Add(m_lblTargetRate, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 20);
 
     // 電圧スケール & CAL校正
-    row2Sizer->Add(new wxStaticText(m_panelLive, wxID_ANY, wxT("フルスケール電圧[V]:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblVoltageScale = new wxStaticText(m_panelLive, wxID_ANY, wxT("フルスケール電圧[V]:"));
+    row2Sizer->Add(m_lblVoltageScale, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     m_txtVoltageScale = new wxTextCtrl(m_panelLive, ID_VOLTAGE_TXT, wxT("1.0"), wxDefaultPosition, wxSize(60, -1));
     row2Sizer->Add(m_txtVoltageScale, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
 
@@ -241,7 +258,8 @@ void MainFrame::InitUI() {
 
     // 3行目: ファイル保存先 & 録音開始/停止ボタン
     auto* row3Sizer = new wxBoxSizer(wxHORIZONTAL);
-    row3Sizer->Add(new wxStaticText(m_panelLive, wxID_ANY, wxT("保存先:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblSavePath = new wxStaticText(m_panelLive, wxID_ANY, wxT("保存先:"));
+    row3Sizer->Add(m_lblSavePath, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
 
     // デフォルトファイル名 (YYYYMMDD_HHMMSS.dlog)
     wxDateTime now = wxDateTime::Now();
@@ -279,12 +297,13 @@ void MainFrame::InitUI() {
     // ========================================================
     m_panelPlayback = new wxPanel(m_modeNotebook);
     auto* playMainSizer = new wxBoxSizer(wxVERTICAL);
-    auto* playBox = new wxStaticBox(m_panelPlayback, wxID_ANY, wxT(" 再生コントロール "));
-    auto* playSizer = new wxStaticBoxSizer(playBox, wxVERTICAL);
+    m_playBox = new wxStaticBox(m_panelPlayback, wxID_ANY, wxT(" 再生コントロール "));
+    auto* playSizer = new wxStaticBoxSizer(m_playBox, wxVERTICAL);
 
     // 再生 1行目: ファイル選択
     auto* playRow1 = new wxBoxSizer(wxHORIZONTAL);
-    playRow1->Add(new wxStaticText(m_panelPlayback, wxID_ANY, wxT("ファイル:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblPlaybackFile = new wxStaticText(m_panelPlayback, wxID_ANY, wxT("ファイル:"));
+    playRow1->Add(m_lblPlaybackFile, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     m_txtPlaybackFile = new wxTextCtrl(m_panelPlayback, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxTE_READONLY);
     playRow1->Add(m_txtPlaybackFile, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     m_btnOpenPlaybackFile = new wxButton(m_panelPlayback, ID_PLAY_OPEN_BTN, wxT("開く..."), wxDefaultPosition, wxSize(70, -1));
@@ -305,7 +324,8 @@ void MainFrame::InitUI() {
     m_btnPlayLast = new wxButton(m_panelPlayback, ID_PLAY_LAST_BTN, wxT("⏭ 末尾"), wxDefaultPosition, wxSize(68, 28));
     playRow2->Add(m_btnPlayLast, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
 
-    playRow2->Add(new wxStaticText(m_panelPlayback, wxID_ANY, wxT("再生速度:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblPlaySpeed = new wxStaticText(m_panelPlayback, wxID_ANY, wxT("再生速度:"));
+    playRow2->Add(m_lblPlaySpeed, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     wxArrayString speedChoices;
     speedChoices.Add(wxT("0.25×"));
     speedChoices.Add(wxT("0.5×"));
@@ -318,7 +338,8 @@ void MainFrame::InitUI() {
     m_choicePlaySpeed->SetSelection(2); // 1× デフォルト
     playRow2->Add(m_choicePlaySpeed, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
 
-    playRow2->Add(new wxStaticText(m_panelPlayback, wxID_ANY, wxT("再生位置:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblPlayPosition = new wxStaticText(m_panelPlayback, wxID_ANY, wxT("再生位置:"));
+    playRow2->Add(m_lblPlayPosition, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     m_txtPlayTime = new wxTextCtrl(m_panelPlayback, ID_PLAY_TIME_TXT, wxT("00:00:00.000"), wxDefaultPosition, wxSize(105, -1), wxTE_PROCESS_ENTER);
     m_txtPlayTime->SetToolTip(wxT("指定書式: HH:MM:SS.ffffff または 秒数。\n※元データのサンプリング周期以上の時間分解能を意味するものではありません（直近サンプル点へ自動調整されます）。"));
     playRow2->Add(m_txtPlayTime, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
@@ -343,7 +364,8 @@ void MainFrame::InitUI() {
 
     // 波形描画オプションバー (時間幅・ゲイン)
     m_waveOptSizer = new wxBoxSizer(wxHORIZONTAL);
-    m_waveOptSizer->Add(new wxStaticText(this, wxID_ANY, wxT("波形表示設定:  時間幅:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblWaveOptSettings = new wxStaticText(this, wxID_ANY, wxT("波形表示設定:  時間幅:"));
+    m_waveOptSizer->Add(m_lblWaveOptSettings, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
 
     wxArrayString timeWinArr;
     int defaultTimeWinSel = 10; // 2.0s
@@ -357,7 +379,8 @@ void MainFrame::InitUI() {
     m_choiceTimeWindow->SetSelection(defaultTimeWinSel);
     m_waveOptSizer->Add(m_choiceTimeWindow, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
 
-    m_waveOptSizer->Add(new wxStaticText(this, wxID_ANY, wxT("垂直ゲイン:")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+    m_lblWaveOptGain = new wxStaticText(this, wxID_ANY, wxT("垂直ゲイン:"));
+    m_waveOptSizer->Add(m_lblWaveOptGain, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     wxArrayString gainArr;
     gainArr.Add(wxT("1x (±1.0 標準)"));
     gainArr.Add(wxT("2x (±0.5)"));
@@ -373,9 +396,9 @@ void MainFrame::InitUI() {
     m_btnHold->SetToolTip(wxT("ディスクへのデータ記録は継続したまま、画面上の波形描画のみを一時停止（静止）します"));
     m_waveOptSizer->Add(m_btnHold, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 15);
 
-    auto* lblHint = new wxStaticText(this, wxID_ANY, wxT("(※記録中も変更可能)"));
-    lblHint->SetForegroundColour(wxColour(130, 140, 150));
-    m_waveOptSizer->Add(lblHint, 0, wxALIGN_CENTER_VERTICAL, 0);
+    m_lblWaveOptHint = new wxStaticText(this, wxID_ANY, wxT("(※記録中も変更可能)"));
+    m_lblWaveOptHint->SetForegroundColour(wxColour(130, 140, 150));
+    m_waveOptSizer->Add(m_lblWaveOptHint, 0, wxALIGN_CENTER_VERTICAL, 0);
 
     mainSizer->Add(m_waveOptSizer, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
 
@@ -384,8 +407,8 @@ void MainFrame::InitUI() {
     mainSizer->Add(m_waveformPanel, 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
 
     // --- 下部: ステータスパネル ---
-    auto* statusBox = new wxStaticBox(this, wxID_ANY, wxT(" 記録ステータス "));
-    auto* statusSizer = new wxStaticBoxSizer(statusBox, wxHORIZONTAL);
+    m_statusBox = new wxStaticBox(this, wxID_ANY, wxT(" 記録ステータス "));
+    auto* statusSizer = new wxStaticBoxSizer(m_statusBox, wxHORIZONTAL);
 
     m_lblStatus = new wxStaticText(this, wxID_ANY, wxT("状態: 停止中"));
     m_lblStatus->SetForegroundColour(wxColour(120, 120, 120));
@@ -410,7 +433,132 @@ void MainFrame::InitUI() {
 
     SetSizer(mainSizer);
     Layout();
+    ApplyLanguage();
     UpdatePlaybackUI();
+}
+
+void MainFrame::ApplyLanguage() {
+    SetTitle(TrWx(StringId::AppTitleLogger));
+
+    if (m_menuLangJa && m_menuLangEn) {
+        Language currentLang = GetUILanguage();
+        m_menuLangJa->Check(currentLang == Language::Japanese);
+        m_menuLangEn->Check(currentLang == Language::English);
+    }
+
+    if (m_modeNotebook) {
+        m_modeNotebook->SetPageText(0, TrWx(StringId::TabLiveInput));
+        m_modeNotebook->SetPageText(1, TrWx(StringId::TabPlayback));
+    }
+
+    if (m_ctrlBox) m_ctrlBox->SetLabel(TrWx(StringId::BoxSettingsAndControls));
+    if (m_lblInputDevice) m_lblInputDevice->SetLabel(TrWx(StringId::LabelInputDevice));
+    if (m_btnRefreshDevices) m_btnRefreshDevices->SetLabel(TrWx(StringId::ButtonRefresh));
+    if (m_lblChannels) m_lblChannels->SetLabel(TrWx(StringId::LabelChannels));
+    if (m_btnChannelConfig) {
+        m_btnChannelConfig->SetLabel(TrWx(StringId::ButtonChannelConfig));
+        m_btnChannelConfig->SetToolTip(TrWx(StringId::TipChannelConfig));
+    }
+    if (m_lblSampleRate) m_lblSampleRate->SetLabel(TrWx(StringId::LabelInputRate));
+    if (m_lblDecimation) m_lblDecimation->SetLabel(TrWx(StringId::LabelDecimation));
+    if (m_chkAntiAliasing) {
+        m_chkAntiAliasing->SetLabel(TrWx(StringId::CheckAntiAliasing));
+        m_chkAntiAliasing->SetToolTip(TrWx(StringId::TipAntiAliasing));
+    }
+    UpdateDecimationChoices();
+    UpdateTargetRateDisplay();
+
+    if (m_lblVoltageScale) m_lblVoltageScale->SetLabel(TrWx(StringId::LabelFullScaleVoltage));
+    if (m_btnCalibrate) m_btnCalibrate->SetLabel(TrWx(StringId::ButtonCalibrate));
+    if (m_btnAcGuide) {
+        m_btnAcGuide->SetLabel(TrWx(StringId::ButtonAcGuide));
+        m_btnAcGuide->SetToolTip(TrWx(StringId::TipAcGuide));
+    }
+    if (m_lblSavePath) m_lblSavePath->SetLabel(TrWx(StringId::LabelSavePath));
+    if (m_btnBrowse) m_btnBrowse->SetLabel(TrWx(StringId::ButtonBrowse));
+
+    // 再生タブ
+    if (m_playBox) m_playBox->SetLabel(TrWx(StringId::BoxPlaybackControl));
+    if (m_lblPlaybackFile) m_lblPlaybackFile->SetLabel(TrWx(StringId::LabelPlaybackFile));
+    if (m_btnOpenPlaybackFile) m_btnOpenPlaybackFile->SetLabel(TrWx(StringId::ButtonOpenFile));
+    if (m_btnPlayFirst) m_btnPlayFirst->SetLabel(TrWx(StringId::ButtonPlayFirst));
+    if (m_btnPlayLast) m_btnPlayLast->SetLabel(TrWx(StringId::ButtonPlayLast));
+    if (m_lblPlaySpeed) m_lblPlaySpeed->SetLabel(TrWx(StringId::LabelPlaySpeed));
+    if (m_lblPlayPosition) m_lblPlayPosition->SetLabel(TrWx(StringId::LabelPlayPosition));
+    if (m_txtPlayTime) m_txtPlayTime->SetToolTip(TrWx(StringId::TipPlayPosition));
+    if (m_btnSeekTime) m_btnSeekTime->SetLabel(TrWx(StringId::ButtonSeek));
+
+    // 波形オプション
+    if (m_lblWaveOptSettings) m_lblWaveOptSettings->SetLabel(TrWx(StringId::LabelWaveformSettings));
+    if (m_lblWaveOptGain) m_lblWaveOptGain->SetLabel(TrWx(StringId::LabelVerticalGain));
+    if (m_btnHold) {
+        m_btnHold->SetToolTip(TrWx(StringId::TipHoldWaveform));
+        if (m_waveformPanel && m_waveformPanel->IsHold()) {
+            m_btnHold->SetLabel(TrWx(StringId::ButtonResumeWaveform));
+        } else {
+            m_btnHold->SetLabel(TrWx(StringId::ButtonHoldWaveform));
+        }
+    }
+    if (m_lblWaveOptHint) m_lblWaveOptHint->SetLabel(TrWx(StringId::LabelChangeDuringRecordHint));
+
+    if (m_choiceGain && m_choiceGain->GetCount() > 0) {
+        int sel = m_choiceGain->GetSelection();
+        m_choiceGain->SetString(0, TrWx(StringId::GainStandard));
+        m_choiceGain->SetSelection(sel);
+    }
+
+    if (m_statusBox) m_statusBox->SetLabel(TrWx(StringId::BoxRecordingStatus));
+
+    UpdateControlStates();
+    UpdatePlaybackUI();
+
+    if (m_lastRecordingSummary.hasSummary) {
+        int tot = static_cast<int>(m_lastRecordingSummary.durationSec);
+        int h = tot / 3600;
+        int m = (tot % 3600) / 60;
+        int s = tot % 60;
+        double mb = static_cast<double>(m_lastRecordingSummary.totalBytesWritten) / (1024.0 * 1024.0);
+        m_lblDuration->SetLabel(TrFormatWx(StringId::DurationPrevFormat, wxString::Format(wxT("%02d:%02d:%02d (%.2f MB)"), h, m, s, mb)));
+        if (m_lastRecordingSummary.isError) {
+            m_lblFileSize->SetLabel(TrWx(StringId::StatusAbortedPartialKept));
+        } else {
+            m_lblFileSize->SetLabel(TrFormatWx(StringId::FileSizeFormatMb, wxString::Format(wxT("%.2f"), mb)));
+        }
+        if (m_lastRecordingSummary.totalOverruns > 0) {
+            m_lblOverruns->SetLabel(TrFormatWx(StringId::OverrunsWarningFormat, std::to_string(m_lastRecordingSummary.totalOverruns)));
+            m_lblOverruns->SetForegroundColour(wxColour(220, 40, 40));
+        } else {
+            m_lblOverruns->SetLabel(TrWx(StringId::OverrunsNormal));
+            m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
+        }
+    }
+
+    if (m_waveformPanel) {
+        m_waveformPanel->Refresh(false);
+    }
+    Layout();
+}
+
+void MainFrame::OnLanguageSelectJa(wxCommandEvent& /*event*/) {
+    if (GetUILanguage() != Language::Japanese) {
+        std::string err;
+        bool saved = LanguagePreferences::SetCurrentLanguage(Language::Japanese, true, &err);
+        ApplyLanguage();
+        if (!saved && !err.empty()) {
+            SetStatusText(TrFormatWx(StringId::WarnSaveLanguageFailed, err));
+        }
+    }
+}
+
+void MainFrame::OnLanguageSelectEn(wxCommandEvent& /*event*/) {
+    if (GetUILanguage() != Language::English) {
+        std::string err;
+        bool saved = LanguagePreferences::SetCurrentLanguage(Language::English, true, &err);
+        ApplyLanguage();
+        if (!saved && !err.empty()) {
+            SetStatusText(TrFormatWx(StringId::WarnSaveLanguageFailed, err));
+        }
+    }
 }
 
 void MainFrame::RefreshDeviceList() {
@@ -505,7 +653,7 @@ void MainFrame::UpdateSampleRateChoices() {
     }
 
     if (m_availableSampleRates.empty()) {
-        wxString errorMsg = wxT("選択したデバイスとチャネル数で使用可能なサンプリング周波数がありません");
+        wxString errorMsg = TrWx(StringId::ErrNoCompatibleRate);
         if (hasQueryFailure && lastQueryError != paNoError) {
             errorMsg += wxString::Format(wxT(" (%s)"), wxString::FromUTF8(Pa_GetErrorText(lastQueryError)));
         }
@@ -516,7 +664,7 @@ void MainFrame::UpdateSampleRateChoices() {
             m_btnStartStop->Disable();
         }
         if (m_lblStatus && !m_audioMgr->IsStreaming()) {
-            m_lblStatus->SetLabel(wxT("状態: ") + errorMsg);
+            m_lblStatus->SetLabel(TrFormatWx(StringId::StatusErrorFormat, errorMsg));
             m_lblStatus->SetForegroundColour(wxColour(200, 50, 50));
         }
     } else {
@@ -528,7 +676,7 @@ void MainFrame::UpdateSampleRateChoices() {
             m_btnStartStop->Enable();
         }
         if (m_lblStatus && !m_audioMgr->IsStreaming()) {
-            m_lblStatus->SetLabel(wxT("状態: 待機中"));
+            m_lblStatus->SetLabel(TrWx(StringId::StatusStopped));
             m_lblStatus->SetForegroundColour(wxColour(120, 120, 120));
         }
 
@@ -563,22 +711,23 @@ void MainFrame::UpdateDecimationChoices() {
     if (currentSel < 0) currentSel = 1; // デフォルト 1/2
 
     double nativeRate = GetSelectedNativeSampleRate();
+    bool isJa = (GetUILanguage() == Language::Japanese);
 
     wxArrayString decArr;
-    decArr.Add(wxString::Format(wxT("1/1 (%s - ネイティブ)"), FormatRateLabel(nativeRate)));
+    decArr.Add(wxString::Format(isJa ? wxT("1/1 (%s - ネイティブ)") : wxT("1/1 (%s - Native)"), FormatRateLabel(nativeRate)));
     decArr.Add(wxString::Format(wxT("1/2 (%s)"), FormatRateLabel(nativeRate / 2.0)));
     decArr.Add(wxString::Format(wxT("1/4 (%s)"), FormatRateLabel(nativeRate / 4.0)));
     decArr.Add(wxString::Format(wxT("1/8 (%s)"), FormatRateLabel(nativeRate / 8.0)));
     const auto addApproximateRate = [&](double requestedRate, const wxString& description) {
         int factor = std::max(1, static_cast<int>(std::round(nativeRate / requestedRate)));
         double actualRate = nativeRate / static_cast<double>(factor);
-        decArr.Add(wxString::Format(wxT("約 %.0f Hz: 1/%d (実 %.3f Hz%s)"),
+        decArr.Add(wxString::Format(isJa ? wxT("約 %.0f Hz: 1/%d (実 %.3f Hz%s)") : wxT("Approx %.0f Hz: 1/%d (Actual %.3f Hz%s)"),
                                     requestedRate, factor, actualRate, description));
     };
     addApproximateRate(1000.0, wxEmptyString);
     addApproximateRate(100.0, wxEmptyString);
-    addApproximateRate(10.0, wxT("・低周波"));
-    addApproximateRate(1.0, wxT("・超長時間"));
+    addApproximateRate(10.0, isJa ? wxT("・低周波") : wxT(" - Low Freq"));
+    addApproximateRate(1.0, isJa ? wxT("・超長時間") : wxT(" - Ultra Long"));
 
     m_choiceDecimation->Clear();
     for (const auto& item : decArr) {
@@ -620,8 +769,8 @@ void MainFrame::UpdateTargetRateDisplay() {
 
     double effectiveTargetRate = nativeRate / static_cast<double>(decFactor);
 
-    m_lblTargetRate->SetLabel(wxString::Format(wxT("記録レート: %.6g Hz (入力の 1/%d)"),
-                                               effectiveTargetRate, decFactor));
+    wxString rateStr = wxString::Format(wxT("%.6g"), effectiveTargetRate);
+    m_lblTargetRate->SetLabel(TrFormatWx(StringId::TargetRateFormat, rateStr, std::to_string(decFactor)));
 }
 
 void MainFrame::OnVoltageChange(wxCommandEvent& /*event*/) {
@@ -633,8 +782,8 @@ void MainFrame::OnVoltageChange(wxCommandEvent& /*event*/) {
 
 void MainFrame::OnCalibrate(wxCommandEvent& /*event*/) {
     wxString vppStr = wxGetTextFromUser(
-        wxT("入力端子に接続されている基準信号の Peak-to-Peak 電圧 [Vpp] を入力してください:\n(例: 1.000 Vpp の交流信号)"),
-        wxT("基準信号による電圧校正"),
+        TrWx(StringId::CalibratePrompt),
+        TrWx(StringId::CalibrateTitle),
         wxT("1.000"),
         this
     );
@@ -642,7 +791,7 @@ void MainFrame::OnCalibrate(wxCommandEvent& /*event*/) {
 
     double targetVpp = 0.0;
     if (!vppStr.ToDouble(&targetVpp) || targetVpp <= 0.0) {
-        wxMessageBox(wxT("正の電圧値を入力してください。"), wxT("エラー"), wxOK | wxICON_ERROR, this);
+        wxMessageBox(TrWx(StringId::CalibrateInvalidInput), TrWx(StringId::ErrorDialogTitle), wxOK | wxICON_ERROR, this);
         return;
     }
 
@@ -650,8 +799,8 @@ void MainFrame::OnCalibrate(wxCommandEvent& /*event*/) {
     double measuredVpp = m_waveformPanel->MeasureChannelVpp(0, 1.0);
     if (measuredVpp < 0.01) {
         wxMessageBox(
-            wxString::Format(wxT("入力信号が小さすぎるか検出できません (実測振幅: %.4f)。\nオーディオI/Fの接続、信号入力および入力ゲインを確認してください。"), measuredVpp),
-            wxT("校正エラー"), wxOK | wxICON_WARNING, this
+            TrFormatWx(StringId::ErrCalibratePrompt, wxString::Format(wxT("%.4f"), measuredVpp)),
+            TrWx(StringId::CalibrateErrorTitle), wxOK | wxICON_WARNING, this
         );
         return;
     }
@@ -663,9 +812,11 @@ void MainFrame::OnCalibrate(wxCommandEvent& /*event*/) {
     m_waveformPanel->SetFullScaleVoltage(calVfs);
 
     wxMessageBox(
-        wxString::Format(wxT("電圧校正が完了しました。\n\n実測デジタル振幅: %.4f\n目標基準電圧: %.3f Vpp\n算出したフルスケール電圧: ±%.4f V"),
-                         measuredVpp, targetVpp, calVfs),
-        wxT("校正完了"), wxOK | wxICON_INFORMATION, this
+        TrFormatWx(StringId::CalibrateSuccessFormat,
+                   wxString::Format(wxT("%.4f"), measuredVpp),
+                   wxString::Format(wxT("%.3f"), targetVpp),
+                   wxString::Format(wxT("%.4f"), calVfs)),
+        TrWx(StringId::CalibrateSuccessTitle), wxOK | wxICON_INFORMATION, this
     );
 }
 
@@ -675,11 +826,11 @@ void MainFrame::OnToggleHold(wxCommandEvent& /*event*/) {
     m_waveformPanel->SetHold(newHold);
 
     if (newHold) {
-        m_btnHold->SetLabel(wxT("ホールド解除"));
+        m_btnHold->SetLabel(TrWx(StringId::ButtonResumeWaveform));
         m_btnHold->SetBackgroundColour(wxColour(220, 110, 20));
         m_btnHold->SetForegroundColour(*wxWHITE);
     } else {
-        m_btnHold->SetLabel(wxT("波形ホールド"));
+        m_btnHold->SetLabel(TrWx(StringId::ButtonHoldWaveform));
         m_btnHold->SetBackgroundColour(wxNullColour);
         m_btnHold->SetForegroundColour(wxNullColour);
     }
@@ -687,17 +838,7 @@ void MainFrame::OnToggleHold(wxCommandEvent& /*event*/) {
 }
 
 void MainFrame::OnAcGuide(wxCommandEvent& /*event*/) {
-    wxString msg = 
-        wxT("【PCオーディオインターフェースの入力回路特性（AC結合／DC遮断）について】\n\n")
-        wxT("一般的なPC用オーディオインターフェース（A/Dコンバータ）の入力回路は音声信号用に最適化されており、入力端子直後にコンデンサ（ハイパスフィルタ）が挿入された『AC結合（交流結合）』回路となっています。\n\n")
-        wxT("■ 直流(DC)入力時に観測される挙動:\n")
-        wxT("・直流電圧（乾電池や直流電源の一定電圧）を入力した場合、接続した瞬間に電圧値が観測されますが、回路の時定数（通常カットオフ周波数は 10 Hz 〜 20 Hz 程度）に従って、指示値が徐々に 0 V へ減衰して戻ります。\n")
-        wxT("・これは本ソフトウェアの不具合ではなく、ハードウェア側の物理的な高域通過フィルタ特性によるものです。\n\n")
-        wxT("■ 長周期・低周波（1 Hz等）計測時の推奨事項:\n")
-        wxT("・交流信号（AC）や微小変動成分、あるいは商用電源周波数以上の信号は正常に連続測定可能です。\n")
-        wxT("・完全な静的直流電圧（DCレベル）を長期間継続して測定されたい場合は、DC結合に対応した計測用フロントエンド（計測器用A/Dボードや計装オペアンプバッファ等）のご利用をご検討ください。");
-
-    wxMessageBox(msg, wxT("オーディオI/Fのハードウェア特性について（AC結合・DC遮断）"), wxOK | wxICON_INFORMATION, this);
+    wxMessageBox(TrWx(StringId::AcGuideContent), TrWx(StringId::AcGuideTitle), wxOK | wxICON_INFORMATION, this);
 }
 
 void MainFrame::OnChannelConfig(wxCommandEvent& /*event*/) {
@@ -934,46 +1075,44 @@ LoggerConfig MainFrame::BuildConfig(bool forRecording, wxString& errorMsg) const
 
 bool MainFrame::StartPreview() {
     if (m_devices.empty() || m_choiceDevice->GetSelection() < 0) {
-        wxMessageBox(wxT("利用可能な入力デバイスがありません。"), wxT("エラー"), wxOK | wxICON_ERROR, this);
+        wxMessageBox(TrWx(StringId::ErrNoInputDevice), TrWx(StringId::ErrorDialogTitle), wxOK | wxICON_ERROR, this);
         return false;
     }
 
     if (m_availableSampleRates.empty()) {
-        wxMessageBox(wxT("選択したデバイスとチャネル数で使用可能なサンプリング周波数がありません。"),
-                     wxT("エラー"), wxOK | wxICON_ERROR, this);
+        wxMessageBox(TrWx(StringId::ErrNoCompatibleRate), TrWx(StringId::ErrorDialogTitle), wxOK | wxICON_ERROR, this);
         return false;
     }
 
     wxString errorMsg;
     LoggerConfig config = BuildConfig(false /* forRecording = false */, errorMsg);
     if (!errorMsg.IsEmpty()) {
-        wxMessageBox(errorMsg, wxT("設定エラー"), wxOK | wxICON_ERROR, this);
+        wxMessageBox(errorMsg, TrWx(StringId::ConfigErrorTitle), wxOK | wxICON_ERROR, this);
         return false;
     }
 
     // プレビューではファイル保存ワーカーを渡さない (nullptr)
     if (!m_audioMgr->OpenStream(config, nullptr)) {
-        wxMessageBox(wxT("オーディオストリームのオープンに失敗しました。デバイス設定を確認してください。"),
-                     wxT("エラー"), wxOK | wxICON_ERROR, this);
+        wxMessageBox(TrWx(StringId::ErrAudioStreamOpen), TrWx(StringId::ErrorDialogTitle), wxOK | wxICON_ERROR, this);
         return false;
     }
 
     if (!m_audioMgr->StartStream()) {
         m_audioMgr->StopStream();
-        wxMessageBox(wxT("オーディオストリームの開始に失敗しました。"),
-                     wxT("エラー"), wxOK | wxICON_ERROR, this);
+        wxMessageBox(TrWx(StringId::ErrAudioStreamStart), TrWx(StringId::ErrorDialogTitle), wxOK | wxICON_ERROR, this);
         return false;
     }
 
     m_activeConfig = config;
     m_hasActiveConfig = true;
+    m_hasErrorStatus = false;
 
     // 波形パネル初期化
-    m_waveformPanel->SetTimeReferenceLabel(wxT("プレビュー開始から"));
+    m_waveformPanel->SetTimeReferenceMode(WaveformPanel::TimeReferenceMode::PreviewStart);
     if (m_waveformPanel->IsHold()) {
         m_waveformPanel->SetHold(false);
         if (m_btnHold) {
-            m_btnHold->SetLabel(wxT("波形ホールド"));
+            m_btnHold->SetLabel(TrWx(StringId::ButtonHoldWaveform));
             m_btnHold->SetBackgroundColour(wxNullColour);
             m_btnHold->SetForegroundColour(wxNullColour);
             m_btnHold->Refresh();
@@ -983,11 +1122,16 @@ bool MainFrame::StartPreview() {
     m_waveformPanel->SetChannelCount(config.channels);
     m_waveformPanel->Clear();
 
-    m_lblDuration->SetLabel(wxT("記録時間: --:--:--"));
-    m_lblFileSize->SetLabel(wxT("ファイルサイズ: 保存なし"));
-    m_lblOverruns->SetLabel(wxT("プレビュー欠落: 0 件 (正常)"));
-    m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
-    m_lblUiDrops->SetLabel(wxT("UI描画スキップ: 0 件"));
+    m_lblDuration->SetLabel(TrFormatWx(StringId::DurationLiveFormat, wxT("--:--:--")));
+    m_lblFileSize->SetLabel(TrWx(StringId::FileSizeNone));
+    if (m_lastRecordingSummary.hasSummary && m_lastRecordingSummary.totalOverruns > 0) {
+        m_lblOverruns->SetLabel(TrFormatWx(StringId::PreviewDropoutsNormalWithPrev, std::to_string(m_lastRecordingSummary.totalOverruns)));
+        m_lblOverruns->SetForegroundColour(wxColour(220, 120, 20));
+    } else {
+        m_lblOverruns->SetLabel(TrWx(StringId::PreviewDropoutsNormal));
+        m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
+    }
+    m_lblUiDrops->SetLabel(TrFormatWx(StringId::UiDropsFormat, std::string("0")));
 
     m_appState = AppState::Previewing;
     UpdateControlStates();
@@ -1003,13 +1147,14 @@ void MainFrame::StopPreview(bool isError, wxString errorMsg) {
     m_audioMgr->StopStream();
 
     m_appState = AppState::Stopped;
+    m_hasErrorStatus = isError;
     UpdateControlStates();
 
     if (isError) {
-        m_lblStatus->SetLabel(wxT("状態: エラー停止"));
+        m_lblStatus->SetLabel(TrWx(StringId::StatusStoppedError));
         m_lblStatus->SetForegroundColour(wxColour(220, 40, 40));
         if (!errorMsg.IsEmpty()) {
-            wxMessageBox(errorMsg, wxT("プレビューエラー"), wxOK | wxICON_ERROR, this);
+            wxMessageBox(errorMsg, TrWx(StringId::ErrorDialogTitle), wxOK | wxICON_ERROR, this);
         }
     }
 }
@@ -1018,14 +1163,14 @@ bool MainFrame::StartRecording() {
     // 1. 保存先ファイルパスの事前検証
     wxString filePath = m_txtFilePath->GetValue();
     if (filePath.IsEmpty()) {
-        wxMessageBox(wxT("保存先ファイルパスを指定してください。"), wxT("エラー"), wxOK | wxICON_WARNING, this);
+        wxMessageBox(TrWx(StringId::PromptSpecifySavePath), TrWx(StringId::WarningDialogTitle), wxOK | wxICON_WARNING, this);
         return false;
     }
 
     if (wxFileExists(filePath)) {
         int ans = wxMessageBox(
-            wxString::Format(wxT("指定されたファイルは既に存在します:\n%s\n\n上書きして記録を開始しますか？"), filePath),
-            wxT("ファイル上書き確認"),
+            TrFormatWx(StringId::ConfirmOverwritePrompt, filePath),
+            TrWx(StringId::ConfirmDialogTitle),
             wxYES_NO | wxNO_DEFAULT | wxICON_WARNING,
             this);
         if (ans != wxYES) {
@@ -1056,15 +1201,14 @@ bool MainFrame::StartRecording() {
     wxString errorMsg;
     LoggerConfig config = BuildConfig(true /* forRecording = true */, errorMsg);
     if (!errorMsg.IsEmpty()) {
-        wxMessageBox(errorMsg, wxT("設定エラー"), wxOK | wxICON_ERROR, this);
+        wxMessageBox(errorMsg, TrWx(StringId::ConfigErrorTitle), wxOK | wxICON_ERROR, this);
         restorePreviewOrStop();
         return false;
     }
 
     // 3. 録音用ストリームを開く
     if (!m_audioMgr->OpenStream(config, m_loggerWorker)) {
-        wxMessageBox(wxT("オーディオストリームのオープンに失敗しました。デバイス設定を確認してください。"),
-                     wxT("エラー"), wxOK | wxICON_ERROR, this);
+        wxMessageBox(TrWx(StringId::ErrAudioStreamOpen), TrWx(StringId::ErrorDialogTitle), wxOK | wxICON_ERROR, this);
         restorePreviewOrStop();
         return false;
     }
@@ -1072,8 +1216,7 @@ bool MainFrame::StartRecording() {
     // 4. ファイル保存ワーカーは一時ファイルへ出力する
     if (!m_loggerWorker->Start(config)) {
         m_audioMgr->StopStream();
-        wxMessageBox(wxT("保存ファイルの作成に失敗しました。パスを確認してください。"),
-                     wxT("エラー"), wxOK | wxICON_ERROR, this);
+        wxMessageBox(TrWx(StringId::ErrSaveFileCreate), TrWx(StringId::ErrorDialogTitle), wxOK | wxICON_ERROR, this);
         restorePreviewOrStop();
         return false;
     }
@@ -1082,8 +1225,7 @@ bool MainFrame::StartRecording() {
     if (!m_audioMgr->StartStream()) {
         m_audioMgr->StopStream();
         m_loggerWorker->Abort();
-        wxMessageBox(wxT("オーディオストリームの開始に失敗しました。"),
-                     wxT("エラー"), wxOK | wxICON_ERROR, this);
+        wxMessageBox(TrWx(StringId::ErrAudioStreamStart), TrWx(StringId::ErrorDialogTitle), wxOK | wxICON_ERROR, this);
         restorePreviewOrStop();
         return false;
     }
@@ -1091,14 +1233,15 @@ bool MainFrame::StartRecording() {
 
     m_activeConfig = config;
     m_hasActiveConfig = true;
+    m_hasErrorStatus = false;
     m_lastRecordingSummary.hasSummary = false;
 
     // 波形パネル初期化
-    m_waveformPanel->SetTimeReferenceLabel(wxT("記録開始から"));
+    m_waveformPanel->SetTimeReferenceMode(WaveformPanel::TimeReferenceMode::RecordStart);
     if (m_waveformPanel->IsHold()) {
         m_waveformPanel->SetHold(false);
         if (m_btnHold) {
-            m_btnHold->SetLabel(wxT("波形ホールド"));
+            m_btnHold->SetLabel(TrWx(StringId::ButtonHoldWaveform));
             m_btnHold->SetBackgroundColour(wxNullColour);
             m_btnHold->SetForegroundColour(wxNullColour);
             m_btnHold->Refresh();
@@ -1108,11 +1251,11 @@ bool MainFrame::StartRecording() {
     m_waveformPanel->SetChannelCount(config.channels);
     m_waveformPanel->Clear();
 
-    m_lblDuration->SetLabel(wxT("記録時間: 00:00:00"));
-    m_lblFileSize->SetLabel(wxT("ファイルサイズ: 0.00 MB"));
-    m_lblOverruns->SetLabel(wxT("データ欠落: 0 件 (正常)"));
+    m_lblDuration->SetLabel(TrFormatWx(StringId::DurationLiveFormat, wxT("00:00:00")));
+    m_lblFileSize->SetLabel(TrFormatWx(StringId::FileSizeFormatMb, wxT("0.00")));
+    m_lblOverruns->SetLabel(TrWx(StringId::OverrunsNormal));
     m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
-    m_lblUiDrops->SetLabel(wxT("UI描画スキップ: 0 件"));
+    m_lblUiDrops->SetLabel(TrFormatWx(StringId::UiDropsFormat, std::string("0")));
 
     m_appState = AppState::Recording;
     UpdateControlStates();
@@ -1247,7 +1390,7 @@ void MainFrame::StopRecording(bool isError, wxString errorMsg, bool resumePrevie
     m_hasActiveConfig = false;
 
     if (isError && !errorMsg.IsEmpty()) {
-        wxMessageBox(errorMsg, wxT("記録エラー"), wxOK | wxICON_ERROR, this);
+        wxMessageBox(errorMsg, TrWx(StringId::ErrRecordingGeneral), wxOK | wxICON_ERROR, this);
     }
 
     // プレビュー再開の試行 (エラー時でもデバイスが健全かつresumePreviewが要求されていれば再開)
@@ -1258,13 +1401,14 @@ void MainFrame::StopRecording(bool isError, wxString errorMsg, bool resumePrevie
     }
 
     m_appState = AppState::Stopped;
+    m_hasErrorStatus = isError;
     UpdateControlStates();
 
     if (isError) {
-        m_lblStatus->SetLabel(wxT("状態: エラー停止"));
+        m_lblStatus->SetLabel(TrWx(StringId::StatusStoppedError));
         m_lblStatus->SetForegroundColour(wxColour(220, 40, 40));
     } else {
-        m_lblStatus->SetLabel(wxT("状態: 記録完了"));
+        m_lblStatus->SetLabel(TrWx(StringId::StatusRecordingComplete));
         m_lblStatus->SetForegroundColour(wxColour(120, 120, 120));
     }
 
@@ -1274,17 +1418,17 @@ void MainFrame::StopRecording(bool isError, wxString errorMsg, bool resumePrevie
         int m = (tot % 3600) / 60;
         int s = tot % 60;
         double mb = static_cast<double>(m_lastRecordingSummary.totalBytesWritten) / (1024.0 * 1024.0);
-        m_lblDuration->SetLabel(wxString::Format(wxT("前回記録: %02d:%02d:%02d (%.2f MB)"), h, m, s, mb));
+        m_lblDuration->SetLabel(TrFormatWx(StringId::DurationPrevFormat, wxString::Format(wxT("%02d:%02d:%02d (%.2f MB)"), h, m, s, mb)));
         if (m_lastRecordingSummary.isError) {
-            m_lblFileSize->SetLabel(wxT("ファイル: エラー中断 (.partial保持)"));
+            m_lblFileSize->SetLabel(TrWx(StringId::StatusAbortedPartialKept));
         } else {
-            m_lblFileSize->SetLabel(wxString::Format(wxT("保存完了: %.2f MB"), mb));
+            m_lblFileSize->SetLabel(TrFormatWx(StringId::FileSizeFormatMb, wxString::Format(wxT("%.2f"), mb)));
         }
         if (m_lastRecordingSummary.totalOverruns > 0) {
-            m_lblOverruns->SetLabel(wxString::Format(wxT("前回記録欠落: %u 件 [警告]"), m_lastRecordingSummary.totalOverruns));
+            m_lblOverruns->SetLabel(TrFormatWx(StringId::OverrunsWarningFormat, std::to_string(m_lastRecordingSummary.totalOverruns)));
             m_lblOverruns->SetForegroundColour(wxColour(220, 40, 40));
         } else {
-            m_lblOverruns->SetLabel(wxT("前回記録欠落: 0 件 (正常)"));
+            m_lblOverruns->SetLabel(TrWx(StringId::OverrunsNormal));
             m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
         }
     }
@@ -1320,13 +1464,13 @@ void MainFrame::UpdateControlStates() {
         m_txtFilePath->Enable();
         m_btnBrowse->Enable();
 
-        m_btnPreview->SetLabel(wxT("プレビュー開始"));
+        m_btnPreview->SetLabel(TrWx(StringId::ButtonPreviewStart));
         m_btnPreview->SetBackgroundColour(wxColour(0, 120, 180));
-        m_btnStartStop->SetLabel(wxT("記録開始"));
+        m_btnStartStop->SetLabel(TrWx(StringId::ButtonRecordStart));
         m_btnStartStop->SetBackgroundColour(wxColour(30, 160, 60));
 
-        if (!m_lblStatus->GetLabel().Contains(wxT("エラー"))) {
-            m_lblStatus->SetLabel(wxT("状態: 停止中"));
+        if (!m_hasErrorStatus) {
+            m_lblStatus->SetLabel(TrWx(StringId::StatusStopped));
             m_lblStatus->SetForegroundColour(wxColour(120, 120, 120));
         }
     } else if (m_appState == AppState::Previewing) {
@@ -1338,20 +1482,20 @@ void MainFrame::UpdateControlStates() {
         m_choiceSampleRate->Disable();
         m_choiceDecimation->Disable();
         if (m_chkAntiAliasing) m_chkAntiAliasing->Disable();
-        if (m_txtVoltageScale) m_txtVoltageScale->Disable();
-        if (m_btnCalibrate) m_btnCalibrate->Disable();
+        if (m_txtVoltageScale) m_txtVoltageScale->Enable();
+        if (m_btnCalibrate) m_btnCalibrate->Enable();
         m_txtFilePath->Enable();
         m_btnBrowse->Enable();
 
         m_btnPreview->Enable();
-        m_btnPreview->SetLabel(wxT("プレビュー停止"));
+        m_btnPreview->SetLabel(TrWx(StringId::ButtonPreviewStop));
         m_btnPreview->SetBackgroundColour(wxColour(220, 120, 30));
 
         m_btnStartStop->Enable();
-        m_btnStartStop->SetLabel(wxT("記録開始"));
+        m_btnStartStop->SetLabel(TrWx(StringId::ButtonRecordStart));
         m_btnStartStop->SetBackgroundColour(wxColour(30, 160, 60));
 
-        m_lblStatus->SetLabel(wxT("状態: プレビュー中"));
+        m_lblStatus->SetLabel(TrWx(StringId::StatusPreviewing));
         m_lblStatus->SetForegroundColour(wxColour(30, 120, 200));
     } else if (m_appState == AppState::Recording) {
         // 記録中: 入力設定およびファイル設定をすべてロック
@@ -1368,14 +1512,14 @@ void MainFrame::UpdateControlStates() {
         m_btnBrowse->Disable();
 
         m_btnPreview->Disable();
-        m_btnPreview->SetLabel(wxT("プレビュー開始"));
+        m_btnPreview->SetLabel(TrWx(StringId::ButtonPreviewStart));
         m_btnPreview->SetBackgroundColour(wxColour(0, 120, 180));
 
         m_btnStartStop->Enable();
-        m_btnStartStop->SetLabel(wxT("記録停止"));
+        m_btnStartStop->SetLabel(TrWx(StringId::ButtonRecordStop));
         m_btnStartStop->SetBackgroundColour(wxColour(220, 40, 40));
 
-        m_lblStatus->SetLabel(wxT("状態: 記録中"));
+        m_lblStatus->SetLabel(TrWx(StringId::StatusRecording));
         m_lblStatus->SetForegroundColour(wxColour(220, 40, 40));
     }
 
@@ -1473,23 +1617,23 @@ void MainFrame::OnTimer(wxTimerEvent& /*event*/) {
             int hours = totalSec / 3600;
             int mins = (totalSec % 3600) / 60;
             int secs = totalSec % 60;
-            m_lblDuration->SetLabel(wxString::Format(wxT("記録時間: %02d:%02d:%02d"), hours, mins, secs));
+            m_lblDuration->SetLabel(TrFormatWx(StringId::DurationLiveFormat, wxString::Format(wxT("%02d:%02d:%02d"), hours, mins, secs)));
 
             // ファイルサイズ (MB / GB)
             double mb = static_cast<double>(loggerStats.totalBytesWritten) / (1024.0 * 1024.0);
             if (mb >= 1024.0) {
-                m_lblFileSize->SetLabel(wxString::Format(wxT("ファイルサイズ: %.2f GB"), mb / 1024.0));
+                m_lblFileSize->SetLabel(TrFormatWx(StringId::FileSizeFormatGb, wxString::Format(wxT("%.2f"), mb / 1024.0)));
             } else {
-                m_lblFileSize->SetLabel(wxString::Format(wxT("ファイルサイズ: %.2f MB"), mb));
+                m_lblFileSize->SetLabel(TrFormatWx(StringId::FileSizeFormatMb, wxString::Format(wxT("%.2f"), mb)));
             }
 
             // 欠落（Overrun）監視
             uint32_t totalOverruns = loggerStats.bufferOverruns + audioStats.bufferOverruns;
             if (totalOverruns == 0) {
-                m_lblOverruns->SetLabel(wxT("データ欠落: 0 件 (正常)"));
+                m_lblOverruns->SetLabel(TrWx(StringId::OverrunsNormal));
                 m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
             } else {
-                m_lblOverruns->SetLabel(wxString::Format(wxT("データ欠落: %u 件 [警告]"), totalOverruns));
+                m_lblOverruns->SetLabel(TrFormatWx(StringId::OverrunsWarningFormat, std::to_string(totalOverruns)));
                 m_lblOverruns->SetForegroundColour(wxColour(220, 40, 40));
             }
         } else if (m_appState == AppState::Previewing) {
@@ -1499,37 +1643,42 @@ void MainFrame::OnTimer(wxTimerEvent& /*event*/) {
                 int m = (tot % 3600) / 60;
                 int s = tot % 60;
                 double mb = static_cast<double>(m_lastRecordingSummary.totalBytesWritten) / (1024.0 * 1024.0);
-                m_lblDuration->SetLabel(wxString::Format(wxT("前回記録: %02d:%02d:%02d (%.2f MB)"), h, m, s, mb));
-                m_lblFileSize->SetLabel(wxT("ファイルサイズ: 保存なし"));
+                m_lblDuration->SetLabel(TrFormatWx(StringId::DurationPrevFormat, wxString::Format(wxT("%02d:%02d:%02d (%.2f MB)"), h, m, s, mb)));
+                m_lblFileSize->SetLabel(TrWx(StringId::FileSizeNone));
             } else {
-                m_lblDuration->SetLabel(wxT("記録時間: --:--:--"));
-                m_lblFileSize->SetLabel(wxT("ファイルサイズ: 保存なし"));
+                m_lblDuration->SetLabel(TrFormatWx(StringId::DurationLiveFormat, wxT("--:--:--")));
+                m_lblFileSize->SetLabel(TrWx(StringId::FileSizeNone));
             }
 
             uint32_t previewOverruns = audioStats.bufferOverruns;
             if (previewOverruns == 0) {
                 if (m_lastRecordingSummary.hasSummary && m_lastRecordingSummary.totalOverruns > 0) {
-                    m_lblOverruns->SetLabel(wxString::Format(wxT("プレビュー欠落: 0 件 (前回記録欠落: %u 件)"), m_lastRecordingSummary.totalOverruns));
+                    m_lblOverruns->SetLabel(TrFormatWx(StringId::PreviewDropoutsNormalWithPrev, std::to_string(m_lastRecordingSummary.totalOverruns)));
                     m_lblOverruns->SetForegroundColour(wxColour(220, 120, 20));
                 } else {
-                    m_lblOverruns->SetLabel(wxT("プレビュー欠落: 0 件 (正常)"));
+                    m_lblOverruns->SetLabel(TrWx(StringId::PreviewDropoutsNormal));
                     m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
                 }
             } else {
-                m_lblOverruns->SetLabel(wxString::Format(wxT("プレビュー欠落: %u 件 [警告]"), previewOverruns));
-                m_lblOverruns->SetForegroundColour(wxColour(220, 40, 40));
+                if (m_lastRecordingSummary.hasSummary && m_lastRecordingSummary.totalOverruns > 0) {
+                    m_lblOverruns->SetLabel(TrFormatWx(StringId::PreviewDropoutsWarningWithPrev, std::to_string(previewOverruns), std::to_string(m_lastRecordingSummary.totalOverruns)));
+                    m_lblOverruns->SetForegroundColour(wxColour(220, 40, 40));
+                } else {
+                    m_lblOverruns->SetLabel(TrFormatWx(StringId::PreviewDropoutsWarning, std::to_string(previewOverruns)));
+                    m_lblOverruns->SetForegroundColour(wxColour(220, 40, 40));
+                }
             }
         }
 
         // UI描画ドロップ数
-        m_lblUiDrops->SetLabel(wxString::Format(wxT("UI描画スキップ: %u 件"), audioStats.uiFramesDropped));
+        m_lblUiDrops->SetLabel(TrFormatWx(StringId::UiDropsFormat, std::to_string(audioStats.uiFramesDropped)));
     }
 }
 
 void MainFrame::OnClose(wxCloseEvent& event) {
     if (m_appState == AppState::Recording) {
-        int res = wxMessageBox(wxT("記録が実行中です。停止して終了しますか？"),
-                               wxT("確認"), wxYES_NO | wxICON_QUESTION, this);
+        int res = wxMessageBox(TrWx(StringId::ConfirmCloseRecording),
+                               TrWx(StringId::ConfirmDialogTitle), wxYES_NO | wxICON_QUESTION, this);
         if (res != wxYES) {
             event.Veto();
             return;
@@ -1552,8 +1701,8 @@ void MainFrame::OnModeChanging(wxBookCtrlEvent& event) {
     if (m_isInitializing) return;
 
     if (m_appState == AppState::Recording) {
-        wxMessageBox(wxT("記録実行中はモードを切り替えることはできません。\n先に記録を停止してください。"),
-                     wxT("モード切替不可"), wxOK | wxICON_WARNING, this);
+        wxMessageBox(TrWx(StringId::ErrCannotSwitchModeWhileRecording),
+                     TrWx(StringId::WarningDialogTitle), wxOK | wxICON_WARNING, this);
         event.Veto();
         return;
     }
@@ -1584,11 +1733,11 @@ void MainFrame::OnModeChanged(wxBookCtrlEvent& event) {
         } else {
             m_waveformPanel->Clear();
             if (m_lblStatus) {
-                m_lblStatus->SetLabel(wxT("状態: 一時停止中 (ファイル未選択)"));
+                m_lblStatus->SetLabel(TrWx(StringId::StatusPausedEndOfFile));
                 m_lblStatus->SetForegroundColour(wxColour(120, 120, 120));
             }
-            if (m_lblDuration) m_lblDuration->SetLabel(wxT("記録時間: --:--:--"));
-            if (m_lblFileSize) m_lblFileSize->SetLabel(wxT("ファイルサイズ: --"));
+            if (m_lblDuration) m_lblDuration->SetLabel(TrFormatWx(StringId::DurationLiveFormat, wxT("--:--:--")));
+            if (m_lblFileSize) m_lblFileSize->SetLabel(TrWx(StringId::FileSizeNone));
             if (m_lblOverruns) m_lblOverruns->SetLabel(wxEmptyString);
             if (m_lblUiDrops) m_lblUiDrops->SetLabel(wxEmptyString);
         }
@@ -1605,20 +1754,20 @@ void MainFrame::OnModeChanged(wxBookCtrlEvent& event) {
         if (m_btnHold) m_btnHold->Show(true);
         if (m_btnAcGuide) m_btnAcGuide->Show(true);
         if (m_waveOptSizer) m_waveOptSizer->Layout();
-        if (m_lblDuration) m_lblDuration->SetLabel(wxT("記録時間: 00:00:00"));
-        if (m_lblFileSize) m_lblFileSize->SetLabel(wxT("ファイルサイズ: 0.00 MB"));
+        if (m_lblDuration) m_lblDuration->SetLabel(TrFormatWx(StringId::DurationLiveFormat, wxT("00:00:00")));
+        if (m_lblFileSize) m_lblFileSize->SetLabel(TrFormatWx(StringId::FileSizeFormatMb, wxT("0.00")));
         if (m_lblOverruns) {
-            m_lblOverruns->SetLabel(wxT("データ欠落: 0 件"));
+            m_lblOverruns->SetLabel(TrWx(StringId::OverrunsNormal));
             m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
         }
-        if (m_lblUiDrops) m_lblUiDrops->SetLabel(wxT("UI描画スキップ: 0 件"));
+        if (m_lblUiDrops) m_lblUiDrops->SetLabel(TrFormatWx(StringId::UiDropsFormat, std::string("0")));
         UpdateControlStates();
     }
     m_waveformPanel->Refresh(false);
 }
 
 void MainFrame::OnPlayOpenFile(wxCommandEvent& /*event*/) {
-    wxFileDialog openFileDialog(this, wxT("記録データファイルを選択"), wxEmptyString, wxEmptyString,
+    wxFileDialog openFileDialog(this, TrWx(StringId::ButtonOpenFile), wxEmptyString, wxEmptyString,
                                 wxT("データログファイル (*.bin;*.dat)|*.bin;*.dat|すべてのファイル (*.*)|*.*"),
                                 wxFD_OPEN | wxFD_FILE_MUST_EXIST);
 
@@ -1630,8 +1779,10 @@ void MainFrame::OnPlayOpenFile(wxCommandEvent& /*event*/) {
     }
 
     std::string errMsg;
-    if (!m_playbackLoader.OpenFile(std::string(path.utf8_str()), errMsg)) {
-        wxMessageBox(wxString::FromUTF8(errMsg.c_str()), wxT("ファイルオープンエラー"), wxOK | wxICON_ERROR, this);
+    LocalizedError openErr;
+    if (!m_playbackLoader.OpenFile(std::string(path.utf8_str()), errMsg, &openErr)) {
+        wxString displayMsg = openErr.hasError() ? wxString::FromUTF8(openErr.FormatCurrent().c_str()) : wxString::FromUTF8(errMsg.c_str());
+        wxMessageBox(displayMsg, TrWx(StringId::ErrFileOpenTitle), wxOK | wxICON_ERROR, this);
         return;
     }
 
@@ -1704,7 +1855,7 @@ void MainFrame::OnPlaySeek(wxCommandEvent& /*event*/) {
     double alignedSec = 0.0;
     std::string errorMsg;
     if (!ParsePlaybackTimeString(std::string(inputStr.utf8_str()), maxPos, Fs, alignedSec, errorMsg)) {
-        wxMessageBox(wxString::FromUTF8(errorMsg.c_str()), wxT("再生位置エラー"), wxOK | wxICON_WARNING, this);
+        wxMessageBox(wxString::FromUTF8(errorMsg.c_str()), TrWx(StringId::ErrPlaybackSeekTitle), wxOK | wxICON_WARNING, this);
         return;
     }
 
@@ -1823,41 +1974,41 @@ void MainFrame::UpdatePlaybackUI() {
         }
 
         if (m_hasPlaybackError) {
-            m_btnPlayPause->SetLabel(wxT("▶ 再生"));
+            m_btnPlayPause->SetLabel(TrWx(StringId::ButtonPlayStart));
             m_btnPlayPause->SetBackgroundColour(wxColour(30, 160, 60));
-            m_lblStatus->SetLabel(wxString::Format(wxT("状態: 読込エラー (%s)"),
-                wxString::FromUTF8(m_playbackErrorMessage.c_str())));
+            m_lblStatus->SetLabel(TrFormatWx(StringId::StatusErrorFormat, wxString::FromUTF8(m_playbackErrorMessage.c_str())));
             m_lblStatus->SetForegroundColour(wxColour(220, 40, 40));
         } else if (m_isPlaying) {
-            m_btnPlayPause->SetLabel(wxT("⏸ 一時停止"));
+            m_btnPlayPause->SetLabel(TrWx(StringId::ButtonPlayPause));
             m_btnPlayPause->SetBackgroundColour(wxColour(220, 120, 30));
-            m_lblStatus->SetLabel(wxT("状態: 再生中"));
+            m_lblStatus->SetLabel(TrWx(StringId::StatusPlaying));
             m_lblStatus->SetForegroundColour(wxColour(30, 160, 60));
         } else if (m_isPlaybackFinished) {
-            m_btnPlayPause->SetLabel(wxT("▶ 再生"));
+            m_btnPlayPause->SetLabel(TrWx(StringId::ButtonPlayStart));
             m_btnPlayPause->SetBackgroundColour(wxColour(30, 160, 60));
-            m_lblStatus->SetLabel(wxT("状態: 再生終了"));
+            m_lblStatus->SetLabel(TrWx(StringId::StatusPlaybackFinished));
             m_lblStatus->SetForegroundColour(wxColour(120, 120, 120));
         } else {
-            m_btnPlayPause->SetLabel(wxT("▶ 再生"));
+            m_btnPlayPause->SetLabel(TrWx(StringId::ButtonPlayStart));
             m_btnPlayPause->SetBackgroundColour(wxColour(30, 160, 60));
-            m_lblStatus->SetLabel(wxT("状態: 一時停止中"));
+            m_lblStatus->SetLabel(TrWx(StringId::StatusPaused));
             m_lblStatus->SetForegroundColour(wxColour(120, 120, 120));
         }
 
 
-        m_lblDuration->SetLabel(wxString::Format(wxT("再生位置: %s"),
+        m_lblDuration->SetLabel(wxString::Format(wxT("%s: %s"),
+            TrWx(StringId::LabelPlayPosition),
             wxString::FromUTF8(FormatPlaybackTime(curPos).c_str())));
         double mb = static_cast<double>(m_playbackLoader.GetFileSize()) / (1024.0 * 1024.0);
         if (mb >= 1024.0) {
-            m_lblFileSize->SetLabel(wxString::Format(wxT("ファイルサイズ: %.2f GB"), mb / 1024.0));
+            m_lblFileSize->SetLabel(TrFormatWx(StringId::FileSizeFormatGb, wxString::Format(wxT("%.2f"), mb / 1024.0)));
         } else {
-            m_lblFileSize->SetLabel(wxString::Format(wxT("ファイルサイズ: %.2f MB"), mb));
+            m_lblFileSize->SetLabel(TrFormatWx(StringId::FileSizeFormatMb, wxString::Format(wxT("%.2f"), mb)));
         }
         m_lblOverruns->SetLabel(wxEmptyString);
         m_lblUiDrops->SetLabel(wxEmptyString);
     } else {
-        m_btnPlayPause->SetLabel(wxT("▶ 再生"));
+        m_btnPlayPause->SetLabel(TrWx(StringId::ButtonPlayStart));
         m_btnPlayPause->SetBackgroundColour(wxColour(30, 160, 60));
     }
 }

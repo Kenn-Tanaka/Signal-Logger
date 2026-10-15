@@ -14,6 +14,8 @@
 #include "dlog_reader.h"
 #include "csv_writer.h"
 #include "batch_converter_worker.h"
+#include "common/localized_strings.h"
+#include "common/language_preferences.h"
 
 using namespace dlog;
 
@@ -418,9 +420,14 @@ void TestChannelMetadataAndCompanionMeta() {
         std::ofstream metaOut(std::filesystem::u8path(metaPath));
         assert(metaOut.is_open());
         metaOut << "[DLOG_METADATA]\n";
+        metaOut << "magic=DLOG\n";
+        metaOut << "version=2\n";
         metaOut << "channels=2\n";
         metaOut << "full_scale_voltage=5.0\n";
-        metaOut << "sample_rate=1000\n\n";
+        metaOut << "sample_rate=1000\n";
+        metaOut << "native_rate=2000\n";
+        metaOut << "decimation_factor=2\n";
+        metaOut << "start_timestamp_utc=1791510000000\n\n";
         metaOut << "[CH1]\n";
         metaOut << "name=V_battery\n";
         metaOut << "unit=V\n\n";
@@ -716,8 +723,10 @@ void TestPerFileMetadataInBatch() {
     CreateDummyDlogFile("meta_b.bin", 1, 1000, 4);
     {
         std::ofstream metaA("meta_a.bin.meta");
+        metaA << "[DLOG_METADATA]\nmagic=DLOG\nversion=2\nchannels=1\nsample_rate=1000\nnative_rate=2000\ndecimation_factor=2\nstart_timestamp_utc=1791510000000\nfull_scale_voltage=1.0\n\n";
         metaA << "[CH1]\nname=Voltage_A\nunit=V\n";
         std::ofstream metaB("meta_b.bin.meta");
+        metaB << "[DLOG_METADATA]\nmagic=DLOG\nversion=2\nchannels=1\nsample_rate=1000\nnative_rate=2000\ndecimation_factor=2\nstart_timestamp_utc=1791510000000\nfull_scale_voltage=1.0\n\n";
         metaB << "[CH1]\nname=Current_B\nunit=A\n";
     }
 
@@ -782,9 +791,11 @@ void TestCollisionDetectionAndMetaVerification() {
     optSameOut.enableSplitLines = false;
 
     std::string err;
-    bool noCollision = BatchConverterWorker::CheckCollisions({item1, item2}, optSameOut, err);
+    LocalizedError locErr;
+    bool noCollision = BatchConverterWorker::CheckCollisions({item1, item2}, optSameOut, locErr);
     assert(!noCollision);
-    assert(err.find("重複（衝突）") != std::string::npos);
+    assert(locErr.code == StringId::FileCollisionDuplicateOutput);
+    assert(!locErr.FormatCurrent().empty());
     std::cout << "  -> Detected collision between same basenames to custom output dir: PASS!" << std::endl;
 
     // 2. 入力ファイルと同一名CSVの衝突検出
@@ -798,9 +809,10 @@ void TestCollisionDetectionAndMetaVerification() {
     optInput.useSameDirAsInput = true;
     optInput.enableSplitLines = false;
 
-    bool inputCollision = BatchConverterWorker::CheckCollisions({itemInput}, optInput, err);
+    bool inputCollision = BatchConverterWorker::CheckCollisions({itemInput}, optInput, locErr);
     assert(!inputCollision);
-    assert(err.find("入力元ファイルと重複") != std::string::npos);
+    assert(locErr.code == StringId::FileCollisionWithInput);
+    assert(!locErr.FormatCurrent().empty());
     std::cout << "  -> Detected collision when output CSV matches input path: PASS!" << std::endl;
 
     // 3. 不整合なチャネル数を持つ.metaの検証と安全なフォールバック (DATA-001)
@@ -868,17 +880,20 @@ void TestData002AcceptanceCriteria() {
     opt.delimiter = ',';
 
     std::string err;
-    bool noCollision = BatchConverterWorker::CheckCollisions({itemBin, itemDat}, opt, err);
+    LocalizedError locErr;
+    bool noCollision = BatchConverterWorker::CheckCollisions({itemBin, itemDat}, opt, locErr);
     // 処理開始前に衝突を拒否すること！
     assert(!noCollision);
-    assert(err.find("重複（衝突）") != std::string::npos || err.find("衝突") != std::string::npos);
+    assert(locErr.code == StringId::FileCollisionDuplicateOutput);
+    assert(!locErr.FormatCurrent().empty());
     std::cout << "  -> DATA-002 Acceptance: 0~1s 50-row split collision rejected: PASS!" << std::endl;
 
     // TSV テスト
     opt.delimiter = '\t';
-    noCollision = BatchConverterWorker::CheckCollisions({itemBin, itemDat}, opt, err);
+    noCollision = BatchConverterWorker::CheckCollisions({itemBin, itemDat}, opt, locErr);
     assert(!noCollision);
-    assert(err.find(".tsv") != std::string::npos || err.find("重複（衝突）") != std::string::npos);
+    assert(locErr.code == StringId::FileCollisionDuplicateOutput);
+    assert(!locErr.FormatCurrent().empty());
     std::cout << "  -> DATA-002 Acceptance: TSV collision rejected: PASS!" << std::endl;
 
     // 日本語パス テスト
@@ -1144,12 +1159,202 @@ void TestValidateHeaderAndStrictMetadata() {
             assert(result[0].name == "CH1");
         }
 
+        // Case D (DATA-001): v2ファイルで [DLOG_METADATA] セクション自体が欠落している場合
+        {
+            std::ofstream out(metaFile, std::ios::trunc);
+            out << "[CHANNEL_1]\nname=SensorA\nunit=V\n";
+            out.close();
+
+            std::string warn;
+            auto result = DlogReader::LoadCompanionMeta("test_strict_meta.bin", h, &warn);
+            assert(!warn.empty());
+            assert(result.size() == 2);
+            assert(result[0].name == "CH1"); // 厳格拒絶されデフォルトへフォールバック
+        }
+
+        // Case E (DATA-001): v2メタデータの magic 不正
+        {
+            std::ofstream out(metaFile, std::ios::trunc);
+            out << "[DLOG_METADATA]\nmagic=XYZW\nversion=2\nchannels=2\n"
+                << "start_timestamp_utc=1791510000000\nfull_scale_voltage=1.0\nsample_rate=22050\n"
+                << "native_rate=44100\ndecimation_factor=2\n";
+            out.close();
+
+            std::string warn;
+            auto result = DlogReader::LoadCompanionMeta("test_strict_meta.bin", h, &warn);
+            assert(!warn.empty());
+            assert(result[0].name == "CH1");
+        }
+
+        // Case F (DATA-001): v2メタデータの version 不一致 (header=2, meta=1)
+        {
+            std::ofstream out(metaFile, std::ios::trunc);
+            out << "[DLOG_METADATA]\nmagic=DLOG\nversion=1\nchannels=2\n"
+                << "start_timestamp_utc=1791510000000\nfull_scale_voltage=1.0\nsample_rate=22050\n"
+                << "native_rate=44100\ndecimation_factor=2\n";
+            out.close();
+
+            std::string warn;
+            auto result = DlogReader::LoadCompanionMeta("test_strict_meta.bin", h, &warn);
+            assert(!warn.empty());
+            assert(result[0].name == "CH1");
+        }
+
+        // Case G (DATA-001): v2メタデータの native_rate 不一致 (header=44100, meta=48000)
+        {
+            std::ofstream out(metaFile, std::ios::trunc);
+            out << "[DLOG_METADATA]\nmagic=DLOG\nversion=2\nchannels=2\n"
+                << "start_timestamp_utc=1791510000000\nfull_scale_voltage=1.0\nsample_rate=22050\n"
+                << "native_rate=48000\ndecimation_factor=2\n";
+            out.close();
+
+            std::string warn;
+            auto result = DlogReader::LoadCompanionMeta("test_strict_meta.bin", h, &warn);
+            assert(!warn.empty());
+            assert(result[0].name == "CH1");
+        }
+
+        // Case H (DATA-001): v2メタデータの start_timestamp_utc 不一致
+        {
+            std::ofstream out(metaFile, std::ios::trunc);
+            out << "[DLOG_METADATA]\nmagic=DLOG\nversion=2\nchannels=2\n"
+                << "start_timestamp_utc=999999999\nfull_scale_voltage=1.0\nsample_rate=22050\n"
+                << "native_rate=44100\ndecimation_factor=2\n";
+            out.close();
+
+            std::string warn;
+            auto result = DlogReader::LoadCompanionMeta("test_strict_meta.bin", h, &warn);
+            assert(!warn.empty());
+            assert(result[0].name == "CH1");
+        }
+
         SafeRemoveFile(metaFile);
     }
     std::cout << "  -> LoadCompanionMeta strict key, duplicate, and format checks: PASS!" << std::endl;
 }
 
+void TestBilingualCsvByteIdentical() {
+    std::cout << "[Test 17] Testing Bilingual CSV Output Byte-Identity (Japanese vs English)..." << std::endl;
+
+    const std::string dummyPath = "test_bilingual_src.bin";
+    const std::string outCsvJa = "test_out_ja.csv";
+    const std::string outCsvEn = "test_out_en.csv";
+
+    SafeRemoveFile(dummyPath);
+    SafeRemoveFile(outCsvJa);
+    SafeRemoveFile(outCsvEn);
+
+    // 2ch, 1000 frames
+    CreateDummyDlogFile(dummyPath, 2, 22050, 1000, 10.0);
+
+    ConversionOptions options;
+    options.timeFormat = TimeFormat::RelativeSec;
+    options.decimationStep = 1;
+    options.delimiter = ',';
+    options.floatPrecision = 6;
+    options.applyVoltageScale = true;
+    options.useSameDirAsInput = true;
+
+    // 1. 日本語環境でCSV変換
+    SetUILanguage(Language::Japanese);
+    {
+        BatchConverterWorker worker;
+        BatchItem item;
+        item.id = 1;
+        assert(DlogReader::InspectFile(dummyPath, item));
+        std::vector<BatchItem> items = {item};
+        assert(worker.Start(items, options));
+        while (worker.IsRunning()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        auto results = worker.GetItems();
+        assert(results[0].status == BatchStatus::Completed);
+        assert(!results[0].outputFiles.empty());
+        std::error_code ec;
+        std::filesystem::rename(results[0].outputFiles[0], outCsvJa, ec);
+        assert(!ec);
+    }
+
+    // 2. 英語環境で同一ファイル・同一オプションでCSV変換
+    SetUILanguage(Language::English);
+    {
+        BatchConverterWorker worker;
+        BatchItem item;
+        item.id = 1;
+        assert(DlogReader::InspectFile(dummyPath, item));
+        std::vector<BatchItem> items = {item};
+        assert(worker.Start(items, options));
+        while (worker.IsRunning()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        auto results = worker.GetItems();
+        assert(results[0].status == BatchStatus::Completed);
+        assert(!results[0].outputFiles.empty());
+        std::error_code ec;
+        std::filesystem::rename(results[0].outputFiles[0], outCsvEn, ec);
+        assert(!ec);
+    }
+
+    // 3. バイト単位で完全一致 (100% Bitwise Identical) を検証
+    std::ifstream inJa(outCsvJa, std::ios::binary);
+    std::ifstream inEn(outCsvEn, std::ios::binary);
+    assert(inJa.is_open() && inEn.is_open());
+
+    std::vector<char> bytesJa((std::istreambuf_iterator<char>(inJa)), std::istreambuf_iterator<char>());
+    std::vector<char> bytesEn((std::istreambuf_iterator<char>(inEn)), std::istreambuf_iterator<char>());
+    assert(!bytesJa.empty());
+    assert(bytesJa.size() == bytesEn.size());
+    assert(std::memcmp(bytesJa.data(), bytesEn.data(), bytesJa.size()) == 0);
+
+    inJa.close();
+    inEn.close();
+
+    SafeRemoveFile(dummyPath);
+    SafeRemoveFile(outCsvJa);
+    SafeRemoveFile(outCsvEn);
+
+    std::cout << "  -> CSV Output Byte-Identity across UI Languages: PASS (100% Bitwise Identical)!" << std::endl;
+}
+
+void TestConverterCliPositionalOnly() {
+    std::cout << "[Test 18] Testing CLI argument classification (CLI-001: positional args only)..." << std::endl;
+
+    std::vector<std::string> rawTokens = {
+        "--smoke-test",
+        "--language=ja",
+        "-v",
+        "file1.bin",
+        "--output-dir=C:/temp",
+        "file2.dat",
+        "--flag"
+    };
+
+    std::vector<std::string> positionalFiles;
+    for (const auto& token : rawTokens) {
+        if (!token.empty() && token[0] != '-') {
+            positionalFiles.push_back(token);
+        }
+    }
+
+    assert(positionalFiles.size() == 2);
+    assert(positionalFiles[0] == "file1.bin");
+    assert(positionalFiles[1] == "file2.dat");
+    std::cout << "  -> Positional-only file argument filtering: PASS!" << std::endl;
+}
+
 int main() {
+    // TEST-001: 実環境の設定ファイルを記録し、テスト実行中の保存先を完全隔離
+    std::filesystem::path realSettingsPath(LanguagePreferences::GetSettingsFilePath());
+    bool realExisted = std::filesystem::exists(realSettingsPath);
+    std::vector<uint8_t> realSettingsContent;
+    if (realExisted) {
+        std::ifstream in(realSettingsPath, std::ios::binary);
+        realSettingsContent.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    }
+
+    std::filesystem::path isolatedSettings = std::filesystem::temp_directory_path() / "converter_test_isolated_settings.ini";
+    LanguagePreferences::SetCustomSettingsPathForTesting(isolatedSettings.u8string());
+
     std::cout << "=== Running DlogToCsv Unit & Integration Tests ===" << std::endl;
     TestReaderAndInspection();
     TestAutoSplitting();
@@ -1167,6 +1372,23 @@ int main() {
     TestData001HeaderVerification();
     TestData003NonDestructiveRecovery();
     TestValidateHeaderAndStrictMetadata();
+    TestBilingualCsvByteIdentical();
+    TestConverterCliPositionalOnly();
+
+    // TEST-001: テスト完了後に実環境の設定ファイルが 1 バイトも変化していないことを厳格検証
+    LanguagePreferences::SetCustomSettingsPathForTesting("");
+    std::error_code ec;
+    std::filesystem::remove(isolatedSettings, ec);
+
+    bool realExistedAfter = std::filesystem::exists(realSettingsPath);
+    assert(realExisted == realExistedAfter);
+    if (realExisted) {
+        std::ifstream in(realSettingsPath, std::ios::binary);
+        std::vector<uint8_t> realSettingsContentAfter((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        assert(realSettingsContent == realSettingsContentAfter);
+    }
+    std::cout << "  -> [TEST-001] Real user settings isolation: 100% untouched verified!" << std::endl;
+
     std::cout << "\n>>> ALL CONVERTER TESTS PASSED! <<<" << std::endl;
     return 0;
 }

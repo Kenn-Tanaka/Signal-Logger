@@ -54,17 +54,24 @@ void DecimatorProcessor::SetupFilter(int factor) {
     }
 }
 
-void DecimatorProcessor::Initialize(int channels, int factor) {
+void DecimatorProcessor::Initialize(int channels, int factor, bool enableAntiAliasing) {
     m_channels = std::max(1, std::min(channels, static_cast<int>(MAX_AUDIO_CHANNELS)));
     m_factor = std::max(1, factor);
-    SetupFilter(m_factor);
+    m_enableAntiAliasing = enableAntiAliasing;
+    if (m_enableAntiAliasing) {
+        SetupFilter(m_factor);
+    } else {
+        m_filterTaps.clear();
+    }
 
     // チャネルごとの遅延履歴バッファを初期化
     m_channelFilterHistory.clear();
-    m_channelFilterHistory.resize(m_channels);
-    size_t histSize = m_filterTaps.empty() ? 1 : m_filterTaps.size();
-    for (int ch = 0; ch < m_channels; ++ch) {
-        m_channelFilterHistory[ch].assign(histSize, 0.0f);
+    if (m_enableAntiAliasing) {
+        m_channelFilterHistory.resize(m_channels);
+        size_t histSize = m_filterTaps.empty() ? 1 : m_filterTaps.size();
+        for (int ch = 0; ch < m_channels; ++ch) {
+            m_channelFilterHistory[ch].assign(histSize, 0.0f);
+        }
     }
 
     // 低周波用ボックスカーアキュムレータ初期化
@@ -98,25 +105,33 @@ void DecimatorProcessor::Process(const AudioBlock& inBlock, AudioBlock& outBlock
     if (m_factor > 8) {
         // ========================================================
         // 低周波電気信号ロガーモード (factor > 8: 1000Hz, 100Hz, 10Hz, 1Hz等)
-        // ボックスカー積分平均（CIC / 移動平均デシメーション）
-        // 高周波・商用電源ノイズを積分相殺し、直流平均電圧を正確に抽出
+        // アンチエイリアス有効時: ボックスカー積分平均（CIC / 移動平均デシメーション）
+        //   高周波・商用電源ノイズを積分相殺し、直流平均電圧を正確に抽出
+        // アンチエイリアス無効時: 単純間引き（ポイントサンプリング / 瞬時値抽出）
         // ========================================================
         size_t outFrames = 0;
         for (size_t f = 0; f < inFrames; ++f) {
-            for (int ch = 0; ch < channels; ++ch) {
-                m_accumSum[ch] += inBlock.samples[f * static_cast<size_t>(inBlock.channels) + ch];
+            if (m_enableAntiAliasing) {
+                for (int ch = 0; ch < channels; ++ch) {
+                    m_accumSum[ch] += inBlock.samples[f * static_cast<size_t>(inBlock.channels) + ch];
+                }
             }
             m_accumCount++;
 
             if (m_accumCount >= static_cast<size_t>(m_factor)) {
                 if (outFrames < MAX_AUDIO_FRAMES) {
                     for (int ch = 0; ch < channels; ++ch) {
-                        float avgVal = static_cast<float>(m_accumSum[ch] / static_cast<double>(m_accumCount));
-                        outBlock.samples[outFrames * static_cast<size_t>(channels) + ch] = avgVal;
-                        m_accumSum[ch] = 0.0;
+                        float val = 0.0f;
+                        if (m_enableAntiAliasing) {
+                            val = static_cast<float>(m_accumSum[ch] / static_cast<double>(m_accumCount));
+                            m_accumSum[ch] = 0.0;
+                        } else {
+                            val = inBlock.samples[f * static_cast<size_t>(inBlock.channels) + ch];
+                        }
+                        outBlock.samples[outFrames * static_cast<size_t>(channels) + ch] = val;
                     }
                     outFrames++;
-                } else {
+                } else if (m_enableAntiAliasing) {
                     for (int ch = 0; ch < channels; ++ch) {
                         m_accumSum[ch] = 0.0;
                     }
@@ -130,10 +145,22 @@ void DecimatorProcessor::Process(const AudioBlock& inBlock, AudioBlock& outBlock
 
     // ========================================================
     // 高速オーディオレートモード (factor <= 8: 1/2, 1/4, 1/8)
-    // 17タップ 線形位相FIRローパスフィルタ
+    // アンチエイリアス有効時: 17タップ 線形位相FIRローパスフィルタ
+    // アンチエイリアス無効時: 単純間引き (ポイントサンプリング)
     // ========================================================
     const size_t outFrames = inFrames / static_cast<size_t>(m_factor);
     outBlock.frameCount = outFrames;
+
+    if (!m_enableAntiAliasing) {
+        for (size_t outIdx = 0; outIdx < outFrames; ++outIdx) {
+            size_t inSampleIdx = outIdx * static_cast<size_t>(m_factor);
+            for (int ch = 0; ch < channels; ++ch) {
+                outBlock.samples[outIdx * static_cast<size_t>(channels) + ch] =
+                    inBlock.samples[inSampleIdx * static_cast<size_t>(inBlock.channels) + ch];
+            }
+        }
+        return;
+    }
 
     const size_t tapCount = m_filterTaps.size();
 

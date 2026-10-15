@@ -16,6 +16,7 @@
 #include <wx/sizer.h>
 #include <wx/notebook.h>
 #include <wx/slider.h>
+#include <wx/checkbox.h>
 #include <memory>
 #include <vector>
 #include <chrono>
@@ -115,6 +116,7 @@ private:
     wxChoice* m_choiceChannels = nullptr;
     wxChoice* m_choiceSampleRate = nullptr;
     wxChoice* m_choiceDecimation = nullptr;
+    wxCheckBox* m_chkAntiAliasing = nullptr;
     wxStaticText* m_lblTargetRate = nullptr;
 
     // 電圧スケール & CAL 校正コントロール (FUNC-001)
@@ -197,6 +199,7 @@ private:
         ID_CHANNEL_CHOICE,
         ID_RATE_CHOICE,
         ID_DECIMATION_CHOICE,
+        ID_ANTIALIASING_CHK,
         ID_VOLTAGE_TXT,
         ID_CALIBRATE_BTN,
         ID_AC_GUIDE_BTN,

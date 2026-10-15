@@ -194,6 +194,11 @@ std::vector<ChannelMetadata> DlogReader::LoadCompanionMeta(const std::string& fi
                         mismatchDetected = true;
                         mismatchReason = "フルスケール電圧不一致 (" + std::to_string(vfs) + " != " + std::to_string(header.fullScaleVoltage) + ")";
                     }
+                } else if (key == "anti_aliasing") {
+                    if (val != "true" && val != "false" && val != "1" && val != "0") {
+                        mismatchDetected = true;
+                        mismatchReason = "anti_aliasing不正 (" + val + ")";
+                    }
                 }
 
                 if (mismatchDetected) {

@@ -1,5 +1,6 @@
 # Dependency fetch/build/install directories (managed by scripts/build-deps.ps1)
 /.deps/
+/3rdparty/
 
 # Project-local build trees & outputs
 /build/

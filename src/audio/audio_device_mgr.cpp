@@ -116,7 +116,7 @@ bool AudioDeviceManager::OpenStream(const LoggerConfig& config, std::shared_ptr<
 
     // デシメータ初期化。記録ヘッダとDSPで同一の整数係数を使うため、
     // LoggerConfig::decimationFactorを唯一の確定値とする。
-    m_decimator.Initialize(m_config.channels, m_config.decimationFactor);
+    m_decimator.Initialize(m_config.channels, m_config.decimationFactor, m_config.enableAntiAliasing);
 
     // PortAudio ストリームパラメータ構築
     PaStreamParameters inputParams;

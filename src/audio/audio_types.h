@@ -160,6 +160,7 @@ struct LoggerConfig {
     double nativeSampleRate = 44100.0;
     int decimationFactor = 2;              // 1: そのまま, 2: 1/2間引き, 4: 1/4間引き等
     double customTargetSampleRate = 0.0;   // UIで選んだ近似目標値（実処理はdecimationFactorの整数1/N）
+    bool enableAntiAliasing = true;        // アンチエイリアスLPF有効/無効 (既定: true)
     double fullScaleVoltage = 1.0;         // フルスケール電圧 [V]
     std::vector<ChannelMetadata> channelMetadata; // 各チャネルの名称・単位設定
     std::string outputFilePath;

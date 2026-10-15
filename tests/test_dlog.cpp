@@ -1339,6 +1339,157 @@ void TestPlaybackEpochIsolationAndDurationRetention() {
     }
 }
 
+void TestDecimatorAntiAliasingToggle() {
+    std::cout << "[Test 21] Testing Decimator Anti-Aliasing Toggle (ON vs OFF)..." << std::endl;
+
+    // 1. Getter and default initialization
+    {
+        DecimatorProcessor dDefault;
+        dDefault.Initialize(2, 2);
+        assert(dDefault.IsAntiAliasingEnabled() == true);
+
+        DecimatorProcessor dOff;
+        dOff.Initialize(2, 2, false);
+        assert(dOff.IsAntiAliasingEnabled() == false);
+
+        DecimatorProcessor dOn;
+        dOn.Initialize(2, 2, true);
+        assert(dOn.IsAntiAliasingEnabled() == true);
+    }
+
+    // 2. Step signal test (factor <= 8: factor = 2)
+    // Step signal: 0.0f for first 256 frames, 1.0f for subsequent 256 frames
+    {
+        const int channels = 2;
+        const int factor = 2;
+        AudioBlock inBlock;
+        inBlock.channels = channels;
+        inBlock.frameCount = 512;
+        inBlock.sampleRate = 44100.0;
+        inBlock.timestampUtcMs = 1000;
+        for (size_t f = 0; f < 512; ++f) {
+            float v = (f < 256) ? 0.0f : 1.0f;
+            inBlock.samples[f * 2 + 0] = v;
+            inBlock.samples[f * 2 + 1] = v;
+        }
+
+        // Without Anti-Aliasing (pure point sampling)
+        DecimatorProcessor dOff;
+        dOff.Initialize(channels, factor, false);
+        AudioBlock outOff;
+        dOff.Process(inBlock, outOff);
+        assert(outOff.frameCount == 256);
+
+        for (size_t outIdx = 0; outIdx < outOff.frameCount; ++outIdx) {
+            float expected = (outIdx < 128) ? 0.0f : 1.0f;
+            assert(outOff.samples[outIdx * 2 + 0] == expected);
+            assert(outOff.samples[outIdx * 2 + 1] == expected);
+        }
+
+        // With Anti-Aliasing (FIR LPF)
+        DecimatorProcessor dOn;
+        dOn.Initialize(channels, factor, true);
+        AudioBlock outOn;
+        dOn.Process(inBlock, outOn);
+        assert(outOn.frameCount == 256);
+
+        // FIR filter creates an intermediate transition around outIdx = 128
+        bool foundTransition = false;
+        for (size_t outIdx = 120; outIdx < 135; ++outIdx) {
+            float val = outOn.samples[outIdx * 2 + 0];
+            if (val > 0.01f && val < 0.99f) {
+                foundTransition = true;
+                break;
+            }
+        }
+        assert(foundTransition);
+    }
+
+    // 3. Frequency domain / aliasing attenuation test (factor = 2)
+    // Input 15kHz signal into 44.1kHz -> 22.05kHz decimation (Nyquist = 11.025kHz)
+    {
+        const int channels = 1;
+        const int factor = 2;
+        AudioBlock inBlock;
+        inBlock.channels = channels;
+        inBlock.frameCount = 512;
+        inBlock.sampleRate = 44100.0;
+        inBlock.timestampUtcMs = 2000;
+        const double fIn = 15000.0;
+        for (size_t f = 0; f < 512; ++f) {
+            inBlock.samples[f] = static_cast<float>(std::sin(2.0 * 3.141592653589793 * fIn * f / 44100.0));
+        }
+
+        DecimatorProcessor dOn;
+        dOn.Initialize(channels, factor, true);
+        AudioBlock outOn;
+        dOn.Process(inBlock, outOn);
+
+        DecimatorProcessor dOff;
+        dOff.Initialize(channels, factor, false);
+        AudioBlock outOff;
+        dOff.Process(inBlock, outOff);
+
+        // Find max amplitude in steady state (skip initial filter delay frames)
+        float maxOn = 0.0f;
+        for (size_t f = 20; f < outOn.frameCount; ++f) {
+            maxOn = std::max(maxOn, std::fabs(outOn.samples[f]));
+        }
+        float maxOff = 0.0f;
+        for (size_t f = 20; f < outOff.frameCount; ++f) {
+            maxOff = std::max(maxOff, std::fabs(outOff.samples[f]));
+        }
+
+        // Anti-aliased signal should be significantly attenuated (stopband)
+        // Non-anti-aliased signal retains full aliased sinusoidal amplitude ~1.0
+        assert(maxOn < 0.20f);
+        assert(maxOff > 0.85f);
+    }
+
+    // 4. Low frequency mode test (factor > 8: factor = 10)
+    // Constant 1.0f with alternating high-frequency noise (+0.5f, -0.5f)
+    {
+        const int channels = 1;
+        const int factor = 10;
+        AudioBlock inBlock;
+        inBlock.channels = channels;
+        inBlock.frameCount = 500;
+        inBlock.sampleRate = 10000.0;
+        inBlock.timestampUtcMs = 3000;
+        for (size_t f = 0; f < 500; ++f) {
+            float noise = (f % 2 == 0) ? 0.5f : -0.5f;
+            inBlock.samples[f] = 1.0f + noise;
+        }
+
+        DecimatorProcessor dOn;
+        dOn.Initialize(channels, factor, true);
+        AudioBlock outOn;
+        dOn.Process(inBlock, outOn);
+
+        DecimatorProcessor dOff;
+        dOff.Initialize(channels, factor, false);
+        AudioBlock outOff;
+        dOff.Process(inBlock, outOff);
+
+        assert(outOn.frameCount == 50);
+        assert(outOff.frameCount == 50);
+
+        // With Anti-Aliasing (boxcar moving average):
+        // Average of 10 samples (five 1.5f and five 0.5f) is exactly 1.0f
+        for (size_t f = 0; f < outOn.frameCount; ++f) {
+            assert(std::fabs(outOn.samples[f] - 1.0f) < 1e-5f);
+        }
+
+        // Without Anti-Aliasing (point sampling):
+        // Every 10th sample (at f = 9, 19, 29... odd indices) is 1.0f - 0.5f = 0.5f
+        for (size_t f = 0; f < outOff.frameCount; ++f) {
+            assert(std::fabs(outOff.samples[f] - 0.5f) < 1e-5f);
+        }
+    }
+
+    std::cout << "  -> Anti-Aliasing Toggle (FIR & Boxcar vs Point Sampling) PASS!" << std::endl;
+}
+
 int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--hardware-only") {
         TestPreviewModeAndTransitions();
@@ -1365,6 +1516,7 @@ int main(int argc, char** argv) {
     TestPlaybackCoreAndClock();
     TestPartialFileRecoveryAndParserValidation();
     TestPlaybackEpochIsolationAndDurationRetention();
+    TestDecimatorAntiAliasingToggle();
     std::cout << "\n>>> ALL TESTS PASSED! <<<" << std::endl;
     return 0;
 }

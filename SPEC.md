@@ -49,8 +49,8 @@ PortAudio callback → Raw SPSC → DSP worker → 保存SPSC → Disk worker �
 記録レートを `Fs = nativeRate / N` とします。GUIはN=1、2、4、8、および約1000／100／10／1Hzに対応する `max(1, round(nativeRate / requestedRate))` を提供します。
 
 - N=1：そのまま出力。
-- 1<N<=8：17タップ、Hamming窓のsinc FIR。正規化カットオフ0.45/N、DCゲイン正規化。
-- N>8：ブロック間で加算状態を保持するボックスカー平均。
+- 1<N<=8：アンチエイリアス有効時は17タップ、Hamming窓のsinc FIR（正規化カットオフ0.45/N、DCゲイン正規化）。無効時は単純間引き（ポイントサンプリング、フィルタ遅延・リンギングなし）。
+- N>8：アンチエイリアス有効時はブロック間で加算状態を保持するボックスカー平均。無効時は単純間引き（Nサンプル周期のポイントサンプリング）。
 - 通過帯域リップルや阻止域減衰を数値保証する仕様はありません。
 
 表示電圧は正規化PCM×共通フルスケール電圧です。チャネル単位文字列の変更は数値変換ではありません。CALはCH1の既知Vpp／デジタルVppから共通係数を求めます。
@@ -100,6 +100,7 @@ full_scale_voltage=1
 sample_rate=22050
 native_rate=44100
 decimation_factor=2
+anti_aliasing=true
 
 [CH1]
 name=Signal1

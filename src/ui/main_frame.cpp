@@ -211,7 +211,12 @@ void MainFrame::InitUI() {
     m_choiceDecimation = new wxChoice(m_panelLive, ID_DECIMATION_CHOICE, wxDefaultPosition, wxSize(155, -1));
     UpdateDecimationChoices();
     m_choiceDecimation->SetSelection(1); // 1/2 デフォルト
-    row2Sizer->Add(m_choiceDecimation, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
+    row2Sizer->Add(m_choiceDecimation, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+
+    m_chkAntiAliasing = new wxCheckBox(m_panelLive, ID_ANTIALIASING_CHK, wxT("アンチエイリアス"));
+    m_chkAntiAliasing->SetValue(true);
+    m_chkAntiAliasing->SetToolTip(wxT("デシメーション時のローパスフィルタ（FIR／移動平均）を適用します。オフにすると単純間引き（ポイントサンプリング）を行い、フィルタ遅延やリンギングを排除します。"));
+    row2Sizer->Add(m_chkAntiAliasing, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 12);
 
     m_lblTargetRate = new wxStaticText(m_panelLive, wxID_ANY, wxT("目標レート: 22050 Hz"));
     m_lblTargetRate->SetForegroundColour(wxColour(0, 120, 215));
@@ -327,7 +332,7 @@ void MainFrame::InitUI() {
     // 再生 3行目: シークバー (スライダー)
     auto* playRow3 = new wxBoxSizer(wxHORIZONTAL);
     m_sliderPlayback = new wxSlider(m_panelPlayback, ID_PLAY_SLIDER, 0, 0, 10000, wxDefaultPosition, wxDefaultSize, wxSL_HORIZONTAL);
-    playRow3->Add(m_sliderPlayback, 1, wxALIGN_CENTER_VERTICAL | wxEXPAND, 0);
+    playRow3->Add(m_sliderPlayback, 1, wxALIGN_CENTER_VERTICAL, 0);
     playSizer->Add(playRow3, 0, wxEXPAND | wxALL, 3);
 
     playMainSizer->Add(playSizer, 1, wxEXPAND | wxALL, 2);
@@ -819,6 +824,7 @@ void MainFrame::OnRateSelect(wxCommandEvent& /*event*/) {
 
 void MainFrame::OnDecimationSelect(wxCommandEvent& /*event*/) {
     UpdateTargetRateDisplay();
+    UpdateControlStates();
 }
 
 void MainFrame::OnTimeWindowSelect(wxCommandEvent& /*event*/) {
@@ -906,6 +912,7 @@ LoggerConfig MainFrame::BuildConfig(bool forRecording, wxString& errorMsg) const
     config.nativeSampleRate = nativeRate;
     config.decimationFactor = decFactor;
     config.customTargetSampleRate = customRate;
+    config.enableAntiAliasing = (m_chkAntiAliasing != nullptr) ? m_chkAntiAliasing->GetValue() : true;
     config.fullScaleVoltage = vFs;
     config.channelMetadata = m_channelMetadata;
     config.framesPerBuffer = 512;
@@ -1157,7 +1164,8 @@ bool MainFrame::WriteCompanionMetadata(const LoggerConfig& config, const DLogFil
     metaOut << "full_scale_voltage=" << header.fullScaleVoltage << "\n";
     metaOut << "sample_rate=" << header.sampleRate << "\n";
     metaOut << "native_rate=" << header.nativeRate << "\n";
-    metaOut << "decimation_factor=" << header.decimationFactor << "\n\n";
+    metaOut << "decimation_factor=" << header.decimationFactor << "\n";
+    metaOut << "anti_aliasing=" << (config.enableAntiAliasing ? "true" : "false") << "\n\n";
     for (int i = 0; i < config.channels; ++i) {
         std::string chName = (i < static_cast<int>(config.channelMetadata.size()) &&
                               !config.channelMetadata[i].name.empty())
@@ -1300,6 +1308,13 @@ void MainFrame::UpdateControlStates() {
             m_btnStartStop->Disable();
         }
         m_choiceDecimation->Enable();
+        if (m_chkAntiAliasing) {
+            if (m_choiceDecimation->GetSelection() == 0) {
+                m_chkAntiAliasing->Disable();
+            } else {
+                m_chkAntiAliasing->Enable();
+            }
+        }
         if (m_txtVoltageScale) m_txtVoltageScale->Enable();
         if (m_btnCalibrate) m_btnCalibrate->Enable();
         m_txtFilePath->Enable();
@@ -1322,6 +1337,7 @@ void MainFrame::UpdateControlStates() {
         if (m_btnChannelConfig) m_btnChannelConfig->Disable();
         m_choiceSampleRate->Disable();
         m_choiceDecimation->Disable();
+        if (m_chkAntiAliasing) m_chkAntiAliasing->Disable();
         if (m_txtVoltageScale) m_txtVoltageScale->Disable();
         if (m_btnCalibrate) m_btnCalibrate->Disable();
         m_txtFilePath->Enable();
@@ -1345,6 +1361,7 @@ void MainFrame::UpdateControlStates() {
         if (m_btnChannelConfig) m_btnChannelConfig->Disable();
         m_choiceSampleRate->Disable();
         m_choiceDecimation->Disable();
+        if (m_chkAntiAliasing) m_chkAntiAliasing->Disable();
         if (m_txtVoltageScale) m_txtVoltageScale->Disable();
         if (m_btnCalibrate) m_btnCalibrate->Disable();
         m_txtFilePath->Disable();

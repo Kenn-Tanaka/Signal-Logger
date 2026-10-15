@@ -19,8 +19,9 @@ public:
      * @brief デシメータの初期化
      * @param channels チャネル数
      * @param factor デシメーション比（1 = 間引きなし, 2 = 1/2間引き, 4 = 1/4間引き等）
+     * @param enableAntiAliasing アンチエイリアスLPF有効/無効 (falseの場合は単純間引き)
      */
-    void Initialize(int channels, int factor);
+    void Initialize(int channels, int factor, bool enableAntiAliasing = true);
 
     /**
      * @brief 入力ブロックを処理し、デシメーション済みブロックを出力
@@ -34,9 +35,15 @@ public:
      */
     int GetFactor() const { return m_factor; }
 
+    /**
+     * @brief アンチエイリアスLPFが有効か取得
+     */
+    bool IsAntiAliasingEnabled() const { return m_enableAntiAliasing; }
+
 private:
     int m_channels = 2;
     int m_factor = 1;
+    bool m_enableAntiAliasing = true;
 
     // 各チャネルごとのFIRフィルタ遅延バッファ
     std::vector<std::vector<float>> m_channelFilterHistory;

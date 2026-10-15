@@ -11,6 +11,7 @@
 
 #include "audio/audio_types.h"
 #include "dsp/decimator_processor.h"
+#include "dsp/calibration_calculator.h"
 #include "storage/data_logger_worker.h"
 #include "audio/audio_device_mgr.h"
 #include "ui/time_axis_calculator.h"
@@ -1809,6 +1810,143 @@ void TestPlaybackSessionRaceAlternatingFiles() {
     std::cout << "  -> Playback session isolation with alternating 8ch/1ch (raw and min/max): PASS!" << std::endl;
 }
 
+void TestCalibrationCalculator() {
+    std::cout << "[Test 23] Testing CalibrationCalculator (DSP Signal Metrics & Vfs Calculation)..." << std::endl;
+
+    // 1. 空・無効バッファ
+    {
+        SignalStats s = CalibrationCalculator::AnalyzeSamples(nullptr, 0);
+        assert(s.vpp == 0.0);
+        assert(s.peakVal == 0.0);
+        assert(s.status == CalibrationSignalStatus::NoSignal);
+
+        float emptyData[1] = { 0.0f };
+        SignalStats s2 = CalibrationCalculator::AnalyzeSamples(emptyData, 0);
+        assert(s2.status == CalibrationSignalStatus::NoSignal);
+    }
+
+    // 2. 標準的な正弦波 (振幅 0.5, Vpp 1.0, 1kHz, 44.1kHzサンプリング)
+    {
+        std::vector<float> sineWave(1000);
+        for (size_t i = 0; i < sineWave.size(); ++i) {
+            sineWave[i] = 0.5f * std::sin(2.0f * 3.14159265f * 1000.0f * static_cast<float>(i) / 44100.0f);
+        }
+        SignalStats s = CalibrationCalculator::AnalyzeSamples(sineWave.data(), sineWave.size());
+        assert(std::abs(s.vpp - 1.0) < 0.02);
+        assert(std::abs(s.peakVal - 0.5) < 0.02);
+        assert(s.status == CalibrationSignalStatus::Good);
+    }
+
+    // 3. 微小信号 (振幅 0.015, Vpp = 0.03 -> LowSignal)
+    {
+        std::vector<float> lowSignal(1000);
+        for (size_t i = 0; i < lowSignal.size(); ++i) {
+            lowSignal[i] = 0.015f * std::sin(2.0f * 3.14159265f * 1000.0f * static_cast<float>(i) / 44100.0f);
+        }
+        SignalStats s = CalibrationCalculator::AnalyzeSamples(lowSignal.data(), lowSignal.size());
+        assert(std::abs(s.vpp - 0.03) < 0.005);
+        assert(s.status == CalibrationSignalStatus::LowSignal);
+    }
+
+    // 4. 無信号 / ノイズフロア (振幅 0.002, Vpp = 0.004 -> NoSignal)
+    {
+        std::vector<float> noSignal(1000);
+        for (size_t i = 0; i < noSignal.size(); ++i) {
+            noSignal[i] = 0.002f * std::sin(2.0f * 3.14159265f * 1000.0f * static_cast<float>(i) / 44100.0f);
+        }
+        SignalStats s = CalibrationCalculator::AnalyzeSamples(noSignal.data(), noSignal.size());
+        assert(s.status == CalibrationSignalStatus::NoSignal);
+    }
+
+    // 5. 過大入力・クリッピング (振幅 1.1, ±0.995 で飽和)
+    {
+        std::vector<float> clipSignal(1000);
+        for (size_t i = 0; i < clipSignal.size(); ++i) {
+            float v = 1.1f * std::sin(2.0f * 3.14159265f * 1000.0f * static_cast<float>(i) / 44100.0f);
+            clipSignal[i] = std::clamp(v, -0.995f, 0.995f);
+        }
+        SignalStats s = CalibrationCalculator::AnalyzeSamples(clipSignal.data(), clipSignal.size());
+        assert(s.peakVal >= 0.99);
+        assert(s.status == CalibrationSignalStatus::Clipping);
+    }
+
+    // 6. DCオフセットを伴う交流信号 (DC +0.3, Vpp 0.4: min +0.1, max +0.5)
+    {
+        std::vector<float> dcSignal(1000);
+        for (size_t i = 0; i < dcSignal.size(); ++i) {
+            dcSignal[i] = 0.3f + 0.2f * std::sin(2.0f * 3.14159265f * 1000.0f * static_cast<float>(i) / 44100.0f);
+        }
+        SignalStats s = CalibrationCalculator::AnalyzeSamples(dcSignal.data(), dcSignal.size());
+        assert(std::abs(s.vpp - 0.4) < 0.01);
+        assert(std::abs(s.peakVal - 0.5) < 0.01);
+        assert(s.status == CalibrationSignalStatus::Good);
+    }
+
+    // 7. フルスケール電圧 (V_FS) 計算の検証
+    {
+        double vfs = 0.0;
+        // target 1.0 Vpp, measured 0.5 digital -> V_FS = 2.0 V
+        assert(CalibrationCalculator::CalculateFullScale(1.0, 0.5, vfs));
+        assert(std::abs(vfs - 2.0) < 1e-9);
+
+        // target 2.5 Vpp, measured 1.0 digital -> V_FS = 2.5 V
+        assert(CalibrationCalculator::CalculateFullScale(2.5, 1.0, vfs));
+        assert(std::abs(vfs - 2.5) < 1e-9);
+
+        // 異常値・境界値保護
+        assert(!CalibrationCalculator::CalculateFullScale(0.0, 1.0, vfs));
+        assert(!CalibrationCalculator::CalculateFullScale(-1.0, 1.0, vfs));
+        assert(!CalibrationCalculator::CalculateFullScale(1.0, 0.0, vfs));
+        assert(!CalibrationCalculator::CalculateFullScale(1.0, 0.00005, vfs));
+        assert(!CalibrationCalculator::CalculateFullScale(std::numeric_limits<double>::quiet_NaN(), 1.0, vfs));
+        assert(!CalibrationCalculator::CalculateFullScale(1.0, std::numeric_limits<double>::infinity(), vfs));
+    }
+
+    // 8. 矩形波および直流(DC)信号
+    {
+        std::vector<float> squareWave(100);
+        for (size_t i = 0; i < squareWave.size(); ++i) {
+            squareWave[i] = (i % 20 < 10) ? 0.4f : -0.4f;
+        }
+        SignalStats sSquare = CalibrationCalculator::AnalyzeSamples(squareWave.data(), squareWave.size());
+        assert(std::abs(sSquare.vpp - 0.8) < 1e-5);
+        assert(sSquare.status == CalibrationSignalStatus::Good);
+
+        std::vector<float> pureDc(100, 0.5f);
+        SignalStats sDc = CalibrationCalculator::AnalyzeSamples(pureDc.data(), pureDc.size());
+        assert(sDc.vpp == 0.0);
+        assert(sDc.status == CalibrationSignalStatus::NoSignal);
+    }
+
+    // 9. NaN/Inf 混入時の耐障害性
+    {
+        std::vector<float> dirtySamples = {
+            std::numeric_limits<float>::quiet_NaN(),
+            -0.3f,
+            std::numeric_limits<float>::infinity(),
+            0.4f,
+            -std::numeric_limits<float>::infinity()
+        };
+        SignalStats sDirty = CalibrationCalculator::AnalyzeSamples(dirtySamples.data(), dirtySamples.size());
+        assert(std::abs(sDirty.vpp - 0.7) < 1e-5);
+        assert(std::abs(sDirty.peakVal - 0.4) < 1e-5);
+        assert(sDirty.status == CalibrationSignalStatus::Good);
+    }
+
+    // 10. 校正成功メッセージ書式の検証
+    {
+        std::string msgJa = FormatString(StringId::CalibrateSuccessWithChFormat, {"1", "0.5000", "1.000", "2.0000"}, Language::Japanese);
+        assert(msgJa.find("チャネル 1") != std::string::npos);
+        assert(msgJa.find("±2.0000 V") != std::string::npos);
+
+        std::string msgEn = FormatString(StringId::CalibrateSuccessWithChFormat, {"2", "0.5000", "1.000", "2.0000"}, Language::English);
+        assert(msgEn.find("Channel 2") != std::string::npos);
+        assert(msgEn.find("±2.0000 V") != std::string::npos);
+    }
+
+    std::cout << "  -> CalibrationCalculator DSP metrics, signal health, and V_FS calculation: PASS!" << std::endl;
+}
+
 int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--hardware-only") {
         TestPreviewModeAndTransitions();
@@ -1851,6 +1989,7 @@ int main(int argc, char** argv) {
     TestDecimatorAntiAliasingToggle();
     TestLocalizationAndLanguagePreferences();
     TestPlaybackSessionRaceAlternatingFiles();
+    TestCalibrationCalculator();
 
     // TEST-001: テスト完了後に実環境の設定ファイルが 1 バイトも変化していないことを厳格検証
     LanguagePreferences::SetCustomSettingsPathForTesting("");

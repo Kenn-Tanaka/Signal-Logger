@@ -134,6 +134,8 @@ set(LOGGER_SOURCES
     src/audio/audio_device_mgr.cpp
     src/dsp/decimator_processor.h
     src/dsp/decimator_processor.cpp
+    src/dsp/calibration_calculator.h
+    src/dsp/calibration_calculator.cpp
     src/storage/power_manager.h
     src/storage/data_logger_worker.h
     src/storage/data_logger_worker.cpp
@@ -148,6 +150,8 @@ set(LOGGER_SOURCES
     src/playback/playback_loader_worker.cpp
     src_converter/dlog_reader.h
     src_converter/dlog_reader.cpp
+    src/ui/calibration_dialog.h
+    src/ui/calibration_dialog.cpp
     src/ui/main_frame.h
     src/ui/main_frame.cpp
 )
@@ -194,6 +198,7 @@ set(TEST_DLOG_SOURCES
     tests/test_dlog.cpp
     src/audio/audio_device_mgr.cpp
     src/dsp/decimator_processor.cpp
+    src/dsp/calibration_calculator.cpp
     src/storage/data_logger_worker.cpp
     src/ui/time_axis_calculator.cpp
     src/playback/playback_time_parser.cpp

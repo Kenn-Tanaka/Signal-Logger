@@ -1,4 +1,5 @@
 #include "ui/main_frame.h"
+#include "ui/calibration_dialog.h"
 #include "common/localized_strings.h"
 #include "common/ui_language.h"
 #include <wx/msgdlg.h>
@@ -781,43 +782,40 @@ void MainFrame::OnVoltageChange(wxCommandEvent& /*event*/) {
 }
 
 void MainFrame::OnCalibrate(wxCommandEvent& /*event*/) {
-    wxString vppStr = wxGetTextFromUser(
-        TrWx(StringId::CalibratePrompt),
-        TrWx(StringId::CalibrateTitle),
-        wxT("1.000"),
-        this
-    );
-    if (vppStr.IsEmpty()) return;
-
-    double targetVpp = 0.0;
-    if (!vppStr.ToDouble(&targetVpp) || targetVpp <= 0.0) {
-        wxMessageBox(TrWx(StringId::CalibrateInvalidInput), TrWx(StringId::ErrorDialogTitle), wxOK | wxICON_ERROR, this);
+    if (m_appState == AppState::Recording) {
+        wxMessageBox(TrWx(StringId::ErrCannotCalibrateWhileRecording),
+                     TrWx(StringId::WarningDialogTitle), wxOK | wxICON_WARNING, this);
         return;
     }
 
-    // チャネル1の実測デジタル Vpp (最大値 - 最小値) を測定
-    double measuredVpp = m_waveformPanel->MeasureChannelVpp(0, 1.0);
-    if (measuredVpp < 0.01) {
-        wxMessageBox(
-            TrFormatWx(StringId::ErrCalibratePrompt, wxString::Format(wxT("%.4f"), measuredVpp)),
-            TrWx(StringId::CalibrateErrorTitle), wxOK | wxICON_WARNING, this
+    if (m_appState == AppState::Stopped) {
+        int ans = wxMessageBox(
+            TrWx(StringId::CalibrateStartPromptConfirm),
+            TrWx(StringId::CalibrateDialogTitle),
+            wxYES_NO | wxICON_QUESTION, this
         );
-        return;
+        if (ans != wxYES) return;
+
+        if (!StartPreview()) {
+            return;
+        }
     }
 
-    // フルスケール電圧 (片振幅 V_FS = targetVpp / measuredVpp)
-    double calVfs = targetVpp / measuredVpp;
+    CalibrationDialog dlg(this, m_waveformPanel, GetSelectedFullScaleVoltage(), GetSelectedChannelCount());
+    if (dlg.ShowModal() == wxID_OK) {
+        double newVfs = dlg.GetCalculatedVfs();
+        m_txtVoltageScale->SetValue(wxString::Format(wxT("%.4f"), newVfs));
+        m_waveformPanel->SetFullScaleVoltage(newVfs);
 
-    m_txtVoltageScale->SetValue(wxString::Format(wxT("%.4f"), calVfs));
-    m_waveformPanel->SetFullScaleVoltage(calVfs);
-
-    wxMessageBox(
-        TrFormatWx(StringId::CalibrateSuccessFormat,
-                   wxString::Format(wxT("%.4f"), measuredVpp),
-                   wxString::Format(wxT("%.3f"), targetVpp),
-                   wxString::Format(wxT("%.4f"), calVfs)),
-        TrWx(StringId::CalibrateSuccessTitle), wxOK | wxICON_INFORMATION, this
-    );
+        wxMessageBox(
+            TrFormatWx(StringId::CalibrateSuccessWithChFormat,
+                       std::to_string(dlg.GetSelectedChannel() + 1),
+                       wxString::Format(wxT("%.4f"), dlg.GetMeasuredVpp()),
+                       wxString::Format(wxT("%.3f"), dlg.GetTargetVpp()),
+                       wxString::Format(wxT("%.4f"), newVfs)),
+            TrWx(StringId::CalibrateSuccessTitle), wxOK | wxICON_INFORMATION, this
+        );
+    }
 }
 
 void MainFrame::OnToggleHold(wxCommandEvent& /*event*/) {

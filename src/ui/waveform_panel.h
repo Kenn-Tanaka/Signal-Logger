@@ -1,6 +1,7 @@
 #pragma once
 
 #include "audio/audio_types.h"
+#include "dsp/calibration_calculator.h"
 #include "ui/time_axis_calculator.h"
 #include "playback/playback_types.h"
 #include <wx/panel.h>
@@ -54,6 +55,11 @@ public:
      */
     void SetFullScaleVoltage(double vFs);
     double GetFullScaleVoltage() const { return m_fullScaleVoltage; }
+
+    /**
+     * @brief CAL信号校正用: 直近の波形データから指定チャネルの詳細統計 (Vpp, Peak, Status) を測定
+     */
+    SignalStats MeasureChannelStats(int channel, double durationSec = 1.0);
 
     /**
      * @brief CAL信号校正用: 直近の波形データから指定チャネルの Peak-to-Peak 振幅 (0.0〜2.0) を測定

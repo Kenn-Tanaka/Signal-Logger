@@ -122,7 +122,7 @@ function Get-BuilderFiles {
     param([string]$Root)
     $relative = @('CMakeLists.txt','CMakePresets.json','build.ps1','build.bat',
         'README.md','README.en.md','SPEC.md','SPEC.en.md','AGENTS.md',
-        'LICENSE','LICENSES.md','.gitignore','tests/test_dlog.cpp','tests/test_converter.cpp','tests/test_build_scripts.ps1',
+        'LICENSE','LICENSES.md','.gitignore','tests/test_dlog.cpp','tests/test_converter.cpp','tests/test_wav_export.cpp','tests/test_build_scripts.ps1',
         'tests/fixtures/README.md','tests/fixtures/generate_fixtures.py','tools/read_dlog.py',
         'deps/dependencies.lock.json','deps/runtime-notices.lock.json',
         'docs/QUICKSTART.md','docs/QUICKSTART.en.md','docs/REFERENCE_MANUAL.md','docs/REFERENCE_MANUAL.en.md',

@@ -121,11 +121,24 @@ set(COMMON_SOURCES
     src/common/localized_strings.cpp
 )
 
+set(EXPORT_SOURCES
+    src/export/wav_export_types.h
+    src/export/wav_export_plan.h
+    src/export/wav_export_plan.cpp
+    src/export/interpolator.h
+    src/export/interpolator.cpp
+    src/export/wav_writer.h
+    src/export/wav_writer.cpp
+    src/export/wav_export_worker.h
+    src/export/wav_export_worker.cpp
+)
+
 # ========================================================
 # 1. データロガー本体 (DataLogger.exe)
 # ========================================================
 set(LOGGER_SOURCES
     ${COMMON_SOURCES}
+    ${EXPORT_SOURCES}
     src/main.cpp
     src/app.h
     src/app.cpp
@@ -152,6 +165,8 @@ set(LOGGER_SOURCES
     src_converter/dlog_reader.cpp
     src/ui/calibration_dialog.h
     src/ui/calibration_dialog.cpp
+    src/ui/wav_export_dialog.h
+    src/ui/wav_export_dialog.cpp
     src/ui/main_frame.h
     src/ui/main_frame.cpp
 )
@@ -258,6 +273,34 @@ target_link_options(test_converter PRIVATE
 )
 
 add_test(NAME TestConverter COMMAND $<TARGET_FILE:test_converter>)
+
+# 3.3 WAVエクスポートコアテスト (test_wav_export)
+set(TEST_WAV_EXPORT_SOURCES
+    ${COMMON_SOURCES}
+    tests/test_wav_export.cpp
+    src/playback/playback_time_parser.cpp
+    src_converter/dlog_reader.cpp
+    src/export/wav_export_plan.cpp
+    src/export/interpolator.cpp
+    src/export/wav_writer.cpp
+    src/export/wav_export_worker.cpp
+)
+
+add_executable(test_wav_export ${TEST_WAV_EXPORT_SOURCES})
+target_include_directories(test_wav_export PRIVATE ${COMMON_INCLUDES})
+target_compile_definitions(test_wav_export PRIVATE
+    UNICODE
+    _UNICODE
+    _WIN32_WINNT=0x0601
+    WINVER=0x0601
+)
+target_link_options(test_wav_export PRIVATE
+    -static
+    -static-libgcc
+    -static-libstdc++
+)
+
+add_test(NAME TestWavExport COMMAND $<TARGET_FILE:test_wav_export>)
 
 # 3.3 GUI 起動・初期化スモークテスト (DataLogger / DlogToCsv × 日本語 / 英語)
 add_test(NAME TestDataLoggerSmokeJa COMMAND $<TARGET_FILE:DataLogger> --smoke-test --language=ja)

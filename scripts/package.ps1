@@ -36,6 +36,8 @@ Invoke-WithSafeMappedDrive $project {
         if ($LASTEXITCODE -ne 0) { throw 'Core tests failed.' }
         & "$build/test_converter.exe"
         if ($LASTEXITCODE -ne 0) { throw 'Converter tests failed.' }
+        & "$build/test_wav_export.exe"
+        if ($LASTEXITCODE -ne 0) { throw 'WAV export tests failed.' }
         $smoke = Start-Process -FilePath "$build/DataLogger.exe" -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
         if (!$smoke.WaitForExit(15000)) { $smoke.Kill(); throw 'Smoke test timeout.' }
         if ($smoke.ExitCode -ne 0) { throw 'Smoke test failed.' }
@@ -43,13 +45,20 @@ Invoke-WithSafeMappedDrive $project {
     New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
     $stage = Join-Path $OutputDir ('.binary-stage-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory "$stage/docs" -Force | Out-Null
-    foreach ($name in @('DataLogger.exe','DlogToCsv.exe','build_provenance.json')) { Copy-Item -LiteralPath "$build/$name" -Destination $stage }
-    foreach ($name in @('LICENSE','LICENSES.md')) { Copy-Item -LiteralPath "$root/$name" -Destination $stage }
-    Copy-Item -LiteralPath "$root/docs/BINARY_README.md" -Destination "$stage/README.md"
-    Copy-Item -LiteralPath "$root/docs/BINARY_README.en.md" -Destination "$stage/README.en.md"
-    foreach ($name in @('QUICKSTART.md','QUICKSTART.en.md','REFERENCE_MANUAL.md','REFERENCE_MANUAL.en.md')) { Copy-Item -LiteralPath "$root/docs/$name" -Destination "$stage/docs/" }
-    Copy-Item -LiteralPath "$root/.deps/install/licenses" -Destination "$stage/licenses" -Recurse
-    Assert-MarkdownLinks $stage
-    & "$PSScriptRoot/test-packaging.ps1" -Directory $stage -Kind Binary
-    Complete-Package $stage (Join-Path $OutputDir "DataLogger-v$Version-win64.zip")
+    try {
+        foreach ($name in @('DataLogger.exe','DlogToCsv.exe','build_provenance.json')) { Copy-Item -LiteralPath "$build/$name" -Destination $stage }
+        foreach ($name in @('LICENSE','LICENSES.md')) { Copy-Item -LiteralPath "$root/$name" -Destination $stage }
+        Copy-Item -LiteralPath "$root/docs/BINARY_README.md" -Destination "$stage/README.md"
+        Copy-Item -LiteralPath "$root/docs/BINARY_README.en.md" -Destination "$stage/README.en.md"
+        foreach ($name in @('QUICKSTART.md','QUICKSTART.en.md','REFERENCE_MANUAL.md','REFERENCE_MANUAL.en.md')) { Copy-Item -LiteralPath "$root/docs/$name" -Destination "$stage/docs/" }
+        Copy-Item -LiteralPath "$root/.deps/install/licenses" -Destination "$stage/licenses" -Recurse
+        Assert-MarkdownLinks $stage
+        & "$PSScriptRoot/test-packaging.ps1" -Directory $stage -Kind Binary
+        Complete-Package $stage (Join-Path $OutputDir "DataLogger-v$Version-win64.zip")
+    } finally {
+        if (Test-Path -LiteralPath $stage) {
+            $safeStage = Assert-SafeDirectoryPath $stage $OutputDir
+            Remove-Item -LiteralPath $safeStage -Recurse -Force
+        }
+    }
 }

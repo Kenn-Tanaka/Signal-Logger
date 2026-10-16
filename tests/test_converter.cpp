@@ -1270,8 +1270,14 @@ void TestBilingualCsvByteIdentical() {
         auto results = worker.GetItems();
         assert(results[0].status == BatchStatus::Completed);
         assert(!results[0].outputFiles.empty());
+        SafeRemoveFile(outCsvJa);
         std::error_code ec;
-        std::filesystem::rename(results[0].outputFiles[0], outCsvJa, ec);
+        for (int retry = 0; retry < 50; ++retry) {
+            ec.clear();
+            std::filesystem::rename(results[0].outputFiles[0], outCsvJa, ec);
+            if (!ec) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
         assert(!ec);
     }
 
@@ -1290,8 +1296,14 @@ void TestBilingualCsvByteIdentical() {
         auto results = worker.GetItems();
         assert(results[0].status == BatchStatus::Completed);
         assert(!results[0].outputFiles.empty());
+        SafeRemoveFile(outCsvEn);
         std::error_code ec;
-        std::filesystem::rename(results[0].outputFiles[0], outCsvEn, ec);
+        for (int retry = 0; retry < 50; ++retry) {
+            ec.clear();
+            std::filesystem::rename(results[0].outputFiles[0], outCsvEn, ec);
+            if (!ec) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
         assert(!ec);
     }
 

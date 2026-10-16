@@ -25,6 +25,16 @@ bool ParsePlaybackTimeString(const std::string& input,
                              std::string& errorMsg);
 
 /**
+ * @brief 時刻文字列を解析し、サンプル境界スナップを行わずに生の秒数を返す (区間指定用)
+ * @param boundaryTolerance 末尾時刻の浮動小数点・表示丸め許容誤差 (秒)
+ */
+bool ParsePlaybackTimeRaw(const std::string& input,
+                          double maxDuration,
+                          double& outRawSec,
+                          std::string& errorMsg,
+                          double boundaryTolerance = 1e-9);
+
+/**
  * @brief 秒数を HH:MM:SS.mmm 形式の文字列へ整形
  */
 std::string FormatPlaybackTime(double seconds, bool includeMicros = false);

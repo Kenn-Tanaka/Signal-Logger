@@ -79,6 +79,23 @@ On stopping, the app waits for queues to flush and files to finalize. Do not for
 - High playback speeds on slow drives may skip frames. Use Pause for exact inspection.
 - Audio output, waveform editing, and Undo/Redo are not supported.
 
+### WAV Export Feature
+
+Click the "Export WAV..." button in the Playback tab to export the opened DLOG recording as a standard WAV or 64-bit RF64 audio file.
+
+| Setting | Details & Specifications |
+|---|---|
+| Output Sampling Rate | Always the pre-decimation `native_rate` from the DLOG header. Interpolation factor $N = \text{decimation\_factor}$. Does not restore lost frequency components or original analog samples |
+| Interpolation Method | **Zero-Order Hold**: Holds sample value constant until next point<br>**Linear [Default]**: Connects adjacent points with straight line segments<br>**Bandlimited (FIR)**: 8-tap Blackman-windowed sinc polyphase filter. 1.0 DC gain normalized, sinc zero-crossing bit-exact reproduction at sample points, clamped boundary padding, zero-phase centering. May introduce subtle ringing on steep edges (disabled when decimation factor is 1) |
+| Output Range | **Entire File [Default]** or **Specified Range [start, end)**. Strictly managed internally with 64-bit frame arithmetic |
+| Channels | Select 1 to 8 channels (maintains ascending order). Multi-channel files ($\ge 3$ ch) set `dwChannelMask = 0` (direct output) to prevent arbitrary surround speaker mapping |
+| Output Format | **IEEE 32-bit Float [Default]** or **16-bit Signed PCM** (no auto-normalization; maps $[-1.0, +1.0]$ directly to $[-32768, +32767]$, clips out-of-range samples and reports counts upon completion; rejects non-finite NaN/Inf) |
+| 4 GiB Size Boundary | **Enforce 4 GiB Limit [Default: Checked]**. When unchecked, automatically outputs in 64-bit RF64 format (`ds64` chunk) if size exceeds 4 GiB (resets to checked on next dialog opening) |
+| Safety & Atomicity | Streams into a temporary file (`.~*.tmp`) in the destination folder, atomically renamed on completion. Incomplete files are safely removed on cancel/error |
+
+* Playback speed, display vertical gain, waveform hold, Min/Max compression, full-scale voltage scaling, and auto-normalization are never applied to exported WAV files.
+
+
 ## CSV / TSV Conversion
 
 | Option | Description |

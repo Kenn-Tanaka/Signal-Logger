@@ -32,7 +32,7 @@ If controls are disabled, stop the preview first before changing hardware parame
 5. Click "Stop Recording" to finish, verifying completion status or errors.
 6. Keep the generated DLOG file together with its companion `filename.bin.meta` file.
 
-After recording stops, the app may return to preview mode. Do not assume the app is recording simply because waveforms are moving. For critical measurements, record the dropout count, path, and any errors. You can toggle between Japanese and English via the "言語 / Language" menu at any time, even during recording or conversion (language selection does not alter stored formats or settings).
+After recording stops, the app returns to the state that was active before recording started (resuming preview if started from preview, or returning to stopped if started while stopped). Do not assume the app is recording simply because waveforms are moving. For critical measurements, record the dropout count, path, and any errors. You can toggle between Japanese and English via the "言語 / Language" menu at any time, even during recording or conversion (language selection does not alter stored formats or settings).
 
 ## 4. Viewing Recorded Data
 
@@ -41,6 +41,7 @@ After recording stops, the app may return to preview mode. Do not assume the app
 3. Enter a time position in seconds (e.g. `12.5`) or formatted timestamp (`00:00:12.500`) to jump directly.
 4. Use Play/Pause, Start, End, or the navigation slider.
 5. Select a playback speed. Playback speed only modifies the rendering rate; it does not alter saved binary data.
+6. To export the recording as an audio WAV file, click "Export WAV...". Select the interpolation method (Linear / FIR / ZOH), channels, time range, and format (Float32 / PCM16) (* Note that interpolation does not restore lost frequency components of the original signal).
 
 If rendering feels delayed over long files, pause playback and choose a shorter time window.
 

@@ -1947,6 +1947,64 @@ void TestCalibrationCalculator() {
     std::cout << "  -> CalibrationCalculator DSP metrics, signal health, and V_FS calculation: PASS!" << std::endl;
 }
 
+void TestMarkCaptureStartedNowAndPostRecordState() {
+    std::cout << "[Test 23] Testing MarkCaptureStartedNow thread-safety and recording file creation..." << std::endl;
+
+    std::filesystem::path tempPath = std::filesystem::temp_directory_path() / "dlog_test_mark_capture.bin";
+    std::error_code ec;
+    std::filesystem::remove(tempPath, ec);
+
+    LoggerConfig cfg;
+    cfg.channels = 2;
+    cfg.nativeSampleRate = 48000.0;
+    cfg.decimationFactor = 2;
+    cfg.framesPerBuffer = 512;
+    cfg.fullScaleVoltage = 2.5;
+    cfg.sampleFormat = SampleFormatType::Float32;
+    cfg.outputFilePath = tempPath.u8string();
+
+    DataLoggerWorker worker;
+    assert(worker.Start(cfg));
+    DLogFileHeader initialHeader = worker.GetWrittenHeader();
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    assert(worker.MarkCaptureStartedNow());
+    DLogFileHeader updatedHeader = worker.GetWrittenHeader();
+    assert(updatedHeader.startTimestampUtc >= initialHeader.startTimestampUtc);
+
+    AudioBlock block{};
+    block.channels = 2;
+    block.frameCount = 256;
+    block.sampleRate = 24000.0;
+    for (size_t i = 0; i < 256 * 2; ++i) {
+        block.samples[i] = 0.25f;
+    }
+    assert(worker.EnqueueBlock(block));
+
+    // 1フレーム以上書き込まれた後は MarkCaptureStartedNow() が拒否されること
+    for (int wait = 0; wait < 50 && worker.GetStats().totalFramesLogged == 0; ++wait) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    assert(worker.GetStats().totalFramesLogged == 256);
+    assert(!worker.MarkCaptureStartedNow());
+
+    worker.Stop();
+    assert(!worker.HasDiskError());
+    assert(std::filesystem::exists(tempPath));
+    assert(std::filesystem::file_size(tempPath) == sizeof(DLogFileHeader) + 256 * 2 * sizeof(float));
+
+    std::ifstream in(tempPath, std::ios::binary);
+    assert(in.is_open());
+    DLogFileHeader diskHeader{};
+    in.read(reinterpret_cast<char*>(&diskHeader), sizeof(diskHeader));
+    assert(in.good());
+    assert(diskHeader.startTimestampUtc == updatedHeader.startTimestampUtc);
+    in.close();
+
+    std::filesystem::remove(tempPath, ec);
+    std::cout << "  -> MarkCaptureStartedNow header sync and deterministic file creation: PASS!" << std::endl;
+}
+
 int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--hardware-only") {
         TestPreviewModeAndTransitions();
@@ -1990,6 +2048,7 @@ int main(int argc, char** argv) {
     TestLocalizationAndLanguagePreferences();
     TestPlaybackSessionRaceAlternatingFiles();
     TestCalibrationCalculator();
+    TestMarkCaptureStartedNowAndPostRecordState();
 
     // TEST-001: テスト完了後に実環境の設定ファイルが 1 バイトも変化していないことを厳格検証
     LanguagePreferences::SetCustomSettingsPathForTesting("");

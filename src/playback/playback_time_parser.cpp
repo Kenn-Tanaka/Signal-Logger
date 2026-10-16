@@ -1,4 +1,5 @@
 #include "playback_time_parser.h"
+#include "common/language_preferences.h"
 #include <sstream>
 #include <iomanip>
 #include <cmath>
@@ -16,33 +17,33 @@ std::string Trim(const std::string& str) {
     return str.substr(first, last - first + 1);
 }
 
+inline std::string PickMsg(const char* ja, const char* en) {
+    return (LanguagePreferences::GetCurrentLanguage() == Language::English) ? en : ja;
+}
+
 } // anonymous namespace
 
-bool ParsePlaybackTimeString(const std::string& input,
-                             double maxPosition,
-                             double Fs,
-                             double& outAlignedSec,
-                             std::string& errorMsg) {
+bool ParsePlaybackTimeRaw(const std::string& input,
+                          double maxDuration,
+                          double& outRawSec,
+                          std::string& errorMsg,
+                          double boundaryTolerance) {
     std::string s = Trim(input);
     if (s.empty()) {
-        errorMsg = "時刻が入力されていません。";
+        errorMsg = PickMsg("時刻が入力されていません。", "Time is not entered.");
         return false;
     }
 
     if (s.front() == '-') {
-        errorMsg = "負の時刻は指定できません。";
-        return false;
-    }
-
-    if (Fs <= 0.0 || std::isnan(Fs) || std::isinf(Fs)) {
-        errorMsg = "サンプリングレートが無効です。";
+        errorMsg = PickMsg("負の時刻は指定できません。", "Negative time cannot be specified.");
         return false;
     }
 
     // 文字検証 (数字, '.', ':', 空白以外はエラー)
     for (char c : s) {
         if (!std::isdigit(static_cast<unsigned char>(c)) && c != '.' && c != ':' && c != ' ') {
-            errorMsg = "時刻の書式が不正です (HH:MM:SS または秒数を指定してください)。";
+            errorMsg = PickMsg("時刻の書式が不正です (HH:MM:SS または秒数を指定してください)。",
+                               "Invalid time format (use HH:MM:SS or seconds).");
             return false;
         }
     }
@@ -63,11 +64,11 @@ bool ParsePlaybackTimeString(const std::string& input,
             size_t idx = 0;
             double val = std::stod(parts[0], &idx);
             if (idx != parts[0].size()) {
-                errorMsg = "秒数の書式が不正です。";
+                errorMsg = PickMsg("秒数の書式が不正です。", "Invalid seconds format.");
                 return false;
             }
             if (std::isnan(val) || std::isinf(val)) {
-                errorMsg = "無効な数値です。";
+                errorMsg = PickMsg("無効な数値です。", "Invalid numeric value.");
                 return false;
             }
             totalSec = val;
@@ -76,17 +77,17 @@ bool ParsePlaybackTimeString(const std::string& input,
             size_t idxM = 0;
             int m = std::stoi(parts[0], &idxM);
             if (idxM != parts[0].size() || m < 0) {
-                errorMsg = "分の値が不正です。";
+                errorMsg = PickMsg("分の値が不正です。", "Invalid minutes value.");
                 return false;
             }
             size_t idx = 0;
             double sec = std::stod(parts[1], &idx);
             if (idx != parts[1].size()) {
-                errorMsg = "秒の書式が不正です。";
+                errorMsg = PickMsg("秒の書式が不正です。", "Invalid seconds format.");
                 return false;
             }
             if (sec < 0.0 || sec >= 60.0) {
-                errorMsg = "秒の値は0以上60未満である必要があります。";
+                errorMsg = PickMsg("秒の値は0以上60未満である必要があります。", "Seconds must be between 0 and < 60.");
                 return false;
             }
             totalSec = m * 60.0 + sec;
@@ -95,47 +96,73 @@ bool ParsePlaybackTimeString(const std::string& input,
             size_t idxH = 0;
             int h = std::stoi(parts[0], &idxH);
             if (idxH != parts[0].size() || h < 0) {
-                errorMsg = "時の値が不正です。";
+                errorMsg = PickMsg("時の値が不正です。", "Invalid hours value.");
                 return false;
             }
             size_t idxM = 0;
             int m = std::stoi(parts[1], &idxM);
             if (idxM != parts[1].size() || m < 0 || m >= 60) {
-                errorMsg = "分の値は0以上60未満である必要があります。";
+                errorMsg = PickMsg("分の値は0以上60未満である必要があります。", "Minutes must be between 0 and < 60.");
                 return false;
             }
             size_t idx = 0;
             double sec = std::stod(parts[2], &idx);
             if (idx != parts[2].size()) {
-                errorMsg = "秒の書式が不正です。";
+                errorMsg = PickMsg("秒の書式が不正です。", "Invalid seconds format.");
                 return false;
             }
             if (sec < 0.0 || sec >= 60.0) {
-                errorMsg = "秒の値は0以上60未満である必要があります。";
+                errorMsg = PickMsg("秒の値は0以上60未満である必要があります。", "Seconds must be between 0 and < 60.");
                 return false;
             }
             totalSec = h * 3600.0 + m * 60.0 + sec;
         } else {
-            errorMsg = "時刻の書式が不正です (コロンが多すぎます)。";
+            errorMsg = PickMsg("時刻の書式が不正です (コロンが多すぎます)。", "Invalid time format (too many colons).");
             return false;
         }
     } catch (...) {
-        errorMsg = "時刻の数値変換に失敗しました。";
+        errorMsg = PickMsg("時刻の数値変換に失敗しました。", "Failed to parse time value.");
         return false;
     }
 
     if (totalSec < 0.0) {
-        errorMsg = "負の時刻は指定できません。";
+        errorMsg = PickMsg("負の時刻は指定できません。", "Negative time cannot be specified.");
         return false;
     }
 
     // 範囲チェック (指定時刻が末尾を超えている場合はエラーを表示し、黙って丸めない)
-    const double epsilon = 1e-9;
-    if (totalSec > maxPosition + epsilon) {
+    if (totalSec > maxDuration + boundaryTolerance) {
         std::ostringstream oss;
         oss << std::fixed << std::setprecision(3);
-        oss << "指定時刻 (" << totalSec << " s) がデータの末尾 (" << maxPosition << " s) を超えています。";
+        if (LanguagePreferences::GetCurrentLanguage() == Language::English) {
+            oss << "Specified time (" << totalSec << " s) exceeds the end of data (" << maxDuration << " s).";
+        } else {
+            oss << "指定時刻 (" << totalSec << " s) がデータの末尾 (" << maxDuration << " s) を超えています。";
+        }
         errorMsg = oss.str();
+        return false;
+    }
+
+    if (totalSec > maxDuration) {
+        totalSec = maxDuration;
+    }
+
+    outRawSec = totalSec;
+    return true;
+}
+
+bool ParsePlaybackTimeString(const std::string& input,
+                             double maxPosition,
+                             double Fs,
+                             double& outAlignedSec,
+                             std::string& errorMsg) {
+    if (Fs <= 0.0 || std::isnan(Fs) || std::isinf(Fs)) {
+        errorMsg = PickMsg("サンプリングレートが無効です。", "Invalid sampling rate.");
+        return false;
+    }
+
+    double totalSec = 0.0;
+    if (!ParsePlaybackTimeRaw(input, maxPosition, totalSec, errorMsg, 1e-9)) {
         return false;
     }
 

@@ -6,6 +6,7 @@
 
 #include <thread>
 #include <atomic>
+#include <mutex>
 #include <fstream>
 #include <filesystem>
 #include <string>
@@ -85,6 +86,7 @@ private:
     std::atomic<bool> m_stopRequested{false};
     std::atomic<bool> m_hasDiskError{false};
     std::unique_ptr<std::thread> m_thread;
+    mutable std::mutex m_streamMutex;
 
     LoggerConfig m_config;
     std::ofstream m_fileStream;
@@ -100,7 +102,7 @@ private:
     std::atomic<uint64_t> m_totalFramesLogged{0};
     std::atomic<uint64_t> m_totalBytesWritten{0};
     std::atomic<uint32_t> m_bufferOverruns{0};
-    int64_t m_startTimeMs = 0;
+    std::atomic<int64_t> m_startTimeMs{0};
     int64_t m_stopTimeMs = 0;
     double m_lastWallClockDurationSec = 0.0;
     double m_lastDataDurationSec = 0.0;

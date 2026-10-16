@@ -127,11 +127,13 @@ Offset  Type      Field Name          Description
 ├── src/                       # データロガー本体 (DataLogger.exe)
 │   ├── main.cpp               # wxWidgets エントリーポイント
 │   ├── app.h / app.cpp        # wxApp 実装
-│   ├── ui/                    # UI実装 (MainFrame, WaveformPanel, TimeAxisCalculator)
+│   ├── common/                # 日英ローカライズ・言語設定永続化
+│   ├── ui/                    # UI実装 (MainFrame, WaveformPanel, CalibrationDialog, WavExportDialog)
 │   ├── audio/                 # PortAudio デバイス列挙・ストリーム管理
-│   ├── dsp/                   # アンチエイリアスFIR LPF・デシメーション
+│   ├── dsp/                   # アンチエイリアスFIR LPF・デシメーション・校正計算
 │   ├── storage/               # ディスク非同期I/O・ファイル出力・電源制御
-│   └── playback/              # DLOG波形再生バックグラウンド読込
+│   ├── playback/              # DLOG波形再生バックグラウンド読込
+│   └── export/                # WAV/RF64 エクスポート・アップサンプリング補間
 ├── src_converter/             # DLOG to CSV バッチ変換ツール (DlogToCsv.exe)
 │   ├── main_converter.cpp     # エントリーポイント
 │   ├── converter_app.h / .cpp # wxApp 実装
@@ -143,8 +145,9 @@ Offset  Type      Field Name          Description
 ├── tools/                     # オフライン解析スクリプト
 │   └── read_dlog.py           # Python 簡易確認・WAV変換ツール
 ├── tests/                     # ユニット・統合テストコード
-│   ├── test_dlog.cpp          # ロガーコアテスト (19テスト項目)
-│   ├── test_converter.cpp     # コンバータコアテスト (11テスト項目)
+│   ├── test_dlog.cpp          # ロガーコアテスト
+│   ├── test_converter.cpp     # コンバータコアテスト
+│   ├── test_wav_export.cpp    # WAVエクスポート・補間・RF64テスト
 │   └── fixtures/              # 公開用合成テスト信号 (純粋な数学的正弦波)
 ├── .deps/                     # [ローカル/非公開] 依存ソース取得・ビルド・インストール先
 ├── build/                     # [ローカル/非公開] ビルド生成物

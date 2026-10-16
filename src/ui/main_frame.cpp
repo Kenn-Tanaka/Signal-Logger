@@ -8,7 +8,10 @@
 #include <wx/statbox.h>
 #include <wx/datetime.h>
 #include <wx/filename.h>
+#include <wx/stdpaths.h>
 #include <wx/menu.h>
+#include <wx/progdlg.h>
+#include <wx/app.h>
 #include <fstream>
 #include <filesystem>
 #include <iomanip>
@@ -116,6 +119,7 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_CHOICE(ID_PLAY_SPEED_CHOICE, MainFrame::OnPlaySpeedSelect)
     EVT_TEXT_ENTER(ID_PLAY_TIME_TXT, MainFrame::OnPlayTimeEnter)
     EVT_BUTTON(ID_PLAY_SEEK_BTN, MainFrame::OnPlaySeek)
+    EVT_BUTTON(ID_PLAY_EXPORT_WAV_BTN, MainFrame::OnPlayExportWav)
     EVT_SCROLL_THUMBTRACK(MainFrame::OnPlaySliderThumbTrack)
     EVT_SCROLL_THUMBRELEASE(MainFrame::OnPlaySliderThumbRelease)
     EVT_SCROLL_CHANGED(MainFrame::OnPlaySliderScroll)
@@ -147,7 +151,8 @@ MainFrame::MainFrame(const wxString& title, const wxPoint& pos, const wxSize& si
 }
 
 bool MainFrame::PerformSmokeTest() {
-    if (!m_modeNotebook || !m_waveformPanel) return false;
+    if (!m_modeNotebook || !m_waveformPanel || !m_txtFilePath) return false;
+    if (!wxFileName(m_txtFilePath->GetValue()).IsAbsolute()) return false;
 
     // 1. 再生タブへの切替をシミュレート
     m_modeNotebook->SetSelection(1);
@@ -262,10 +267,11 @@ void MainFrame::InitUI() {
     m_lblSavePath = new wxStaticText(m_panelLive, wxID_ANY, wxT("保存先:"));
     row3Sizer->Add(m_lblSavePath, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
 
-    // デフォルトファイル名 (YYYYMMDD_HHMMSS.dlog)
+    // デフォルトファイル名 (フルパス: <保存先ディレクトリ>/dlog_YYYYMMDD_HHMMSS.bin)
     wxDateTime now = wxDateTime::Now();
     wxString defaultFile = wxString::Format(wxT("dlog_%s.bin"), now.Format(wxT("%Y%m%d_%H%M%S")));
-    m_txtFilePath = new wxTextCtrl(m_panelLive, wxID_ANY, defaultFile, wxDefaultPosition, wxSize(240, -1));
+    wxFileName defaultFn(GetDefaultSaveDirectory(), defaultFile);
+    m_txtFilePath = new wxTextCtrl(m_panelLive, wxID_ANY, defaultFn.GetFullPath(), wxDefaultPosition, wxSize(240, -1));
     row3Sizer->Add(m_txtFilePath, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
 
     m_btnBrowse = new wxButton(m_panelLive, ID_BROWSE_FILE, wxT("参照..."), wxDefaultPosition, wxSize(65, -1));
@@ -308,7 +314,13 @@ void MainFrame::InitUI() {
     m_txtPlaybackFile = new wxTextCtrl(m_panelPlayback, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxTE_READONLY);
     playRow1->Add(m_txtPlaybackFile, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
     m_btnOpenPlaybackFile = new wxButton(m_panelPlayback, ID_PLAY_OPEN_BTN, wxT("開く..."), wxDefaultPosition, wxSize(70, -1));
-    playRow1->Add(m_btnOpenPlaybackFile, 0, wxALIGN_CENTER_VERTICAL, 0);
+    playRow1->Add(m_btnOpenPlaybackFile, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+
+    m_btnExportWav = new wxButton(m_panelPlayback, ID_PLAY_EXPORT_WAV_BTN, TrWx(StringId::ButtonExportWav), wxDefaultPosition, wxDefaultSize);
+    m_btnExportWav->SetToolTip(TrWx(StringId::TipExportWav));
+    m_btnExportWav->Enable(false);
+    playRow1->Add(m_btnExportWav, 0, wxALIGN_CENTER_VERTICAL, 0);
+
     playSizer->Add(playRow1, 0, wxEXPAND | wxALL, 3);
 
     // 再生 2行目: トランスポート & 再生速度 & 再生位置
@@ -455,6 +467,10 @@ void MainFrame::ApplyLanguage() {
     if (m_ctrlBox) m_ctrlBox->SetLabel(TrWx(StringId::BoxSettingsAndControls));
     if (m_lblInputDevice) m_lblInputDevice->SetLabel(TrWx(StringId::LabelInputDevice));
     if (m_btnRefreshDevices) m_btnRefreshDevices->SetLabel(TrWx(StringId::ButtonRefresh));
+    if (m_devices.empty() && m_choiceDevice && m_choiceDevice->GetCount() > 0) {
+        m_choiceDevice->SetString(0, TrWx(StringId::DeviceNotFound));
+        m_choiceDevice->SetSelection(0);
+    }
     if (m_lblChannels) m_lblChannels->SetLabel(TrWx(StringId::LabelChannels));
     if (m_btnChannelConfig) {
         m_btnChannelConfig->SetLabel(TrWx(StringId::ButtonChannelConfig));
@@ -488,6 +504,10 @@ void MainFrame::ApplyLanguage() {
     if (m_lblPlayPosition) m_lblPlayPosition->SetLabel(TrWx(StringId::LabelPlayPosition));
     if (m_txtPlayTime) m_txtPlayTime->SetToolTip(TrWx(StringId::TipPlayPosition));
     if (m_btnSeekTime) m_btnSeekTime->SetLabel(TrWx(StringId::ButtonSeek));
+    if (m_btnExportWav) {
+        m_btnExportWav->SetLabel(TrWx(StringId::ButtonExportWav));
+        m_btnExportWav->SetToolTip(TrWx(StringId::TipExportWav));
+    }
 
     // 波形オプション
     if (m_lblWaveOptSettings) m_lblWaveOptSettings->SetLabel(TrWx(StringId::LabelWaveformSettings));
@@ -513,7 +533,7 @@ void MainFrame::ApplyLanguage() {
     UpdateControlStates();
     UpdatePlaybackUI();
 
-    if (m_lastRecordingSummary.hasSummary) {
+    if ((!m_modeNotebook || m_modeNotebook->GetSelection() == 0) && m_appState != AppState::Recording && m_lastRecordingSummary.hasSummary) {
         int tot = static_cast<int>(m_lastRecordingSummary.durationSec);
         int h = tot / 3600;
         int m = (tot % 3600) / 60;
@@ -525,12 +545,34 @@ void MainFrame::ApplyLanguage() {
         } else {
             m_lblFileSize->SetLabel(TrFormatWx(StringId::FileSizeFormatMb, wxString::Format(wxT("%.2f"), mb)));
         }
-        if (m_lastRecordingSummary.totalOverruns > 0) {
-            m_lblOverruns->SetLabel(TrFormatWx(StringId::OverrunsWarningFormat, std::to_string(m_lastRecordingSummary.totalOverruns)));
-            m_lblOverruns->SetForegroundColour(wxColour(220, 40, 40));
+        if (m_appState == AppState::Previewing) {
+            LoggerStats audioStats = m_audioMgr->GetStats();
+            uint32_t previewOverruns = audioStats.bufferOverruns;
+            if (previewOverruns == 0) {
+                if (m_lastRecordingSummary.totalOverruns > 0) {
+                    m_lblOverruns->SetLabel(TrFormatWx(StringId::PreviewDropoutsNormalWithPrev, std::to_string(m_lastRecordingSummary.totalOverruns)));
+                    m_lblOverruns->SetForegroundColour(wxColour(220, 120, 20));
+                } else {
+                    m_lblOverruns->SetLabel(TrWx(StringId::PreviewDropoutsNormal));
+                    m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
+                }
+            } else {
+                if (m_lastRecordingSummary.totalOverruns > 0) {
+                    m_lblOverruns->SetLabel(TrFormatWx(StringId::PreviewDropoutsWarningWithPrev, std::to_string(previewOverruns), std::to_string(m_lastRecordingSummary.totalOverruns)));
+                    m_lblOverruns->SetForegroundColour(wxColour(220, 40, 40));
+                } else {
+                    m_lblOverruns->SetLabel(TrFormatWx(StringId::PreviewDropoutsWarning, std::to_string(previewOverruns)));
+                    m_lblOverruns->SetForegroundColour(wxColour(220, 40, 40));
+                }
+            }
         } else {
-            m_lblOverruns->SetLabel(TrWx(StringId::OverrunsNormal));
-            m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
+            if (m_lastRecordingSummary.totalOverruns > 0) {
+                m_lblOverruns->SetLabel(TrFormatWx(StringId::OverrunsWarningFormat, std::to_string(m_lastRecordingSummary.totalOverruns)));
+                m_lblOverruns->SetForegroundColour(wxColour(220, 40, 40));
+            } else {
+                m_lblOverruns->SetLabel(TrWx(StringId::OverrunsNormal));
+                m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
+            }
         }
     }
 
@@ -567,7 +609,7 @@ void MainFrame::RefreshDeviceList() {
     m_choiceDevice->Clear();
 
     if (m_devices.empty()) {
-        m_choiceDevice->Append(wxT("入力デバイスが見つかりません"));
+        m_choiceDevice->Append(TrWx(StringId::DeviceNotFound));
         m_choiceDevice->SetSelection(0);
         m_choiceDevice->Disable();
         UpdateChannelChoices();
@@ -987,10 +1029,55 @@ void MainFrame::OnGainSelect(wxCommandEvent& /*event*/) {
     m_waveformPanel->Refresh(false);
 }
 
+wxString MainFrame::GetDefaultSaveDirectory() const {
+    wxFileName exeFn(wxStandardPaths::Get().GetExecutablePath());
+    wxString exeDir = exeFn.GetPath();
+    wxString tempDir = wxFileName(wxStandardPaths::Get().GetTempDir(), wxEmptyString).GetPath();
+
+    auto isInsideTempOrStage = [&](const wxString& dir) {
+        if (dir.IsEmpty()) return true;
+        wxString normDir = dir.Lower();
+        if (!tempDir.IsEmpty() && normDir.StartsWith(tempDir.Lower())) {
+            return true;
+        }
+        if (normDir.Contains(wxT("\\appdata\\local\\temp")) ||
+            normDir.Contains(wxT("/appdata/local/temp")) ||
+            normDir.Contains(wxT(".binary-stage-")) ||
+            normDir.Contains(wxT(".builder-stage-"))) {
+            return true;
+        }
+        return false;
+    };
+
+    if (!exeDir.IsEmpty() && !isInsideTempOrStage(exeDir) && wxFileName::IsDirWritable(exeDir)) {
+        return exeDir;
+    }
+    wxString cwd = wxGetCwd();
+    if (!cwd.IsEmpty() && !isInsideTempOrStage(cwd) && wxFileName::IsDirWritable(cwd)) {
+        return cwd;
+    }
+    wxString docsDir = wxStandardPaths::Get().GetDocumentsDir();
+    if (!docsDir.IsEmpty() && wxFileName::IsDirWritable(docsDir)) {
+        return docsDir;
+    }
+    return !exeDir.IsEmpty() ? exeDir : cwd;
+}
+
 void MainFrame::OnBrowseFile(wxCommandEvent& /*event*/) {
-    wxFileDialog saveFileDialog(this, wxT("記録保存先ファイルを選択"), wxEmptyString,
-                                m_txtFilePath->GetValue(),
-                                wxT("データログファイル (*.bin;*.dat)|*.bin;*.dat|すべてのファイル (*.*)|*.*"),
+    wxFileName currentFn(m_txtFilePath->GetValue().Trim().Trim(false));
+    wxString defaultDir = currentFn.GetPath();
+    if (defaultDir.IsEmpty() || !wxDirExists(defaultDir)) {
+        defaultDir = GetDefaultSaveDirectory();
+    }
+    wxString defaultName = currentFn.GetFullName();
+    if (defaultName.IsEmpty()) {
+        wxDateTime now = wxDateTime::Now();
+        defaultName = wxString::Format(wxT("dlog_%s.bin"), now.Format(wxT("%Y%m%d_%H%M%S")));
+    }
+
+    wxFileDialog saveFileDialog(this, TrWx(StringId::LabelSavePath), defaultDir,
+                                defaultName,
+                                TrWx(StringId::FilterDlogFiles),
                                 wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
 
     if (saveFileDialog.ShowModal() == wxID_CANCEL) return;
@@ -1002,7 +1089,7 @@ LoggerConfig MainFrame::BuildConfig(bool forRecording, wxString& errorMsg) const
     errorMsg.Clear();
 
     if (m_devices.empty() || m_choiceDevice->GetSelection() < 0) {
-        errorMsg = wxT("利用可能な入力デバイスがありません。");
+        errorMsg = TrWx(StringId::ErrNoInputDevice);
         return config;
     }
 
@@ -1012,13 +1099,14 @@ LoggerConfig MainFrame::BuildConfig(bool forRecording, wxString& errorMsg) const
     int channels = GetSelectedChannelCount();
     if (channels < 1 || channels > static_cast<int>(MAX_AUDIO_CHANNELS) ||
         channels > m_devices[devIdx].maxInputChannels) {
-        errorMsg = wxString::Format(wxT("選択されたチャネル数 (%d ch) はデバイスの最大チャネル数 (%d ch) を超えています。"),
-                                    channels, m_devices[devIdx].maxInputChannels);
+        errorMsg = TrFormatWx(StringId::ErrChannelsExceedMaxFormat,
+                              std::to_string(channels),
+                              std::to_string(m_devices[devIdx].maxInputChannels));
         return config;
     }
 
     if (m_availableSampleRates.empty()) {
-        errorMsg = wxT("選択したデバイスとチャネル数で使用可能なサンプリング周波数がありません。");
+        errorMsg = TrWx(StringId::ErrNoCompatibleRate);
         return config;
     }
 
@@ -1058,10 +1146,15 @@ LoggerConfig MainFrame::BuildConfig(bool forRecording, wxString& errorMsg) const
     config.sampleFormat = SampleFormatType::Float32;
 
     if (forRecording) {
-        wxString filePath = m_txtFilePath->GetValue();
+        wxString filePath = m_txtFilePath->GetValue().Trim().Trim(false);
         if (filePath.IsEmpty()) {
-            errorMsg = wxT("保存先ファイルパスを指定してください。");
+            errorMsg = TrWx(StringId::PromptSpecifySavePath);
             return config;
+        }
+        wxFileName fn(filePath);
+        if (!fn.IsAbsolute()) {
+            fn.MakeAbsolute(GetDefaultSaveDirectory());
+            filePath = fn.GetFullPath();
         }
         config.outputFilePath = std::string(filePath.utf8_str());
     } else {
@@ -1120,8 +1213,22 @@ bool MainFrame::StartPreview() {
     m_waveformPanel->SetChannelCount(config.channels);
     m_waveformPanel->Clear();
 
-    m_lblDuration->SetLabel(TrFormatWx(StringId::DurationLiveFormat, wxT("--:--:--")));
-    m_lblFileSize->SetLabel(TrWx(StringId::FileSizeNone));
+    if (m_lastRecordingSummary.hasSummary) {
+        int tot = static_cast<int>(m_lastRecordingSummary.durationSec);
+        int h = tot / 3600;
+        int m = (tot % 3600) / 60;
+        int s = tot % 60;
+        double mb = static_cast<double>(m_lastRecordingSummary.totalBytesWritten) / (1024.0 * 1024.0);
+        m_lblDuration->SetLabel(TrFormatWx(StringId::DurationPrevFormat, wxString::Format(wxT("%02d:%02d:%02d (%.2f MB)"), h, m, s, mb)));
+        if (m_lastRecordingSummary.isError) {
+            m_lblFileSize->SetLabel(TrWx(StringId::StatusAbortedPartialKept));
+        } else {
+            m_lblFileSize->SetLabel(TrFormatWx(StringId::FileSizeFormatMb, wxString::Format(wxT("%.2f"), mb)));
+        }
+    } else {
+        m_lblDuration->SetLabel(TrFormatWx(StringId::DurationLiveFormat, wxT("--:--:--")));
+        m_lblFileSize->SetLabel(TrWx(StringId::FileSizeNone));
+    }
     if (m_lastRecordingSummary.hasSummary && m_lastRecordingSummary.totalOverruns > 0) {
         m_lblOverruns->SetLabel(TrFormatWx(StringId::PreviewDropoutsNormalWithPrev, std::to_string(m_lastRecordingSummary.totalOverruns)));
         m_lblOverruns->SetForegroundColour(wxColour(220, 120, 20));
@@ -1148,6 +1255,27 @@ void MainFrame::StopPreview(bool isError, wxString errorMsg) {
     m_hasErrorStatus = isError;
     UpdateControlStates();
 
+    if (m_lastRecordingSummary.hasSummary) {
+        int tot = static_cast<int>(m_lastRecordingSummary.durationSec);
+        int h = tot / 3600;
+        int m = (tot % 3600) / 60;
+        int s = tot % 60;
+        double mb = static_cast<double>(m_lastRecordingSummary.totalBytesWritten) / (1024.0 * 1024.0);
+        m_lblDuration->SetLabel(TrFormatWx(StringId::DurationPrevFormat, wxString::Format(wxT("%02d:%02d:%02d (%.2f MB)"), h, m, s, mb)));
+        if (m_lastRecordingSummary.isError) {
+            m_lblFileSize->SetLabel(TrWx(StringId::StatusAbortedPartialKept));
+        } else {
+            m_lblFileSize->SetLabel(TrFormatWx(StringId::FileSizeFormatMb, wxString::Format(wxT("%.2f"), mb)));
+        }
+        if (m_lastRecordingSummary.totalOverruns > 0) {
+            m_lblOverruns->SetLabel(TrFormatWx(StringId::OverrunsWarningFormat, std::to_string(m_lastRecordingSummary.totalOverruns)));
+            m_lblOverruns->SetForegroundColour(wxColour(220, 40, 40));
+        } else {
+            m_lblOverruns->SetLabel(TrWx(StringId::OverrunsNormal));
+            m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
+        }
+    }
+
     if (isError) {
         m_lblStatus->SetLabel(TrWx(StringId::StatusStoppedError));
         m_lblStatus->SetForegroundColour(wxColour(220, 40, 40));
@@ -1158,11 +1286,18 @@ void MainFrame::StopPreview(bool isError, wxString errorMsg) {
 }
 
 bool MainFrame::StartRecording() {
-    // 1. 保存先ファイルパスの事前検証
-    wxString filePath = m_txtFilePath->GetValue();
+    // 1. 保存先ファイルパスの事前検証と絶対パスへの正規化
+    wxString filePath = m_txtFilePath->GetValue().Trim().Trim(false);
     if (filePath.IsEmpty()) {
         wxMessageBox(TrWx(StringId::PromptSpecifySavePath), TrWx(StringId::WarningDialogTitle), wxOK | wxICON_WARNING, this);
         return false;
+    }
+
+    wxFileName resolvedFn(filePath);
+    if (!resolvedFn.IsAbsolute()) {
+        resolvedFn.MakeAbsolute(GetDefaultSaveDirectory());
+        filePath = resolvedFn.GetFullPath();
+        m_txtFilePath->SetValue(filePath);
     }
 
     if (wxFileExists(filePath)) {
@@ -1176,16 +1311,16 @@ bool MainFrame::StartRecording() {
         }
     }
 
-    // 2. プレビュー中なら安全に一時停止
-    bool wasPreviewing = (m_appState == AppState::Previewing);
-    if (wasPreviewing) {
+    // 2. 記録開始前のプレビュー状態を保持し、プレビュー中なら安全に一時停止
+    m_wasPreviewingBeforeRecord = (m_appState == AppState::Previewing);
+    if (m_wasPreviewingBeforeRecord) {
         m_audioMgr->StopStream();
         m_appState = AppState::Stopped;
         UpdateControlStates();
     }
 
     auto restorePreviewOrStop = [&]() {
-        if (wasPreviewing) {
+        if (m_wasPreviewingBeforeRecord) {
             if (!StartPreview()) {
                 m_appState = AppState::Stopped;
                 UpdateControlStates();
@@ -1354,12 +1489,10 @@ void MainFrame::StopRecording(bool isError, wxString errorMsg, bool resumePrevie
     if (m_loggerWorker->HasDiskError()) {
         isError = true;
         wxString recovery = wxString::FromUTF8(m_loggerWorker->GetRecoveryFilePath().c_str());
-        errorMsg = wxString::Format(
-            wxT("保存ファイルの書き込みまたは確定に失敗しました。既存ファイルは保持されています。\n回収可能な一時ファイル: %s"),
-            recovery);
+        errorMsg = TrFormatWx(StringId::ErrDiskWriteRecoveryFormat, recovery);
     } else if (m_hasActiveConfig && !WriteCompanionMetadata(m_activeConfig, writtenHeader)) {
         isError = true;
-        errorMsg = wxT("DLOG本体は保存されましたが、チャネルメタデータ (.meta) の保存に失敗しました。");
+        errorMsg = TrWx(StringId::ErrMetaWriteFailed);
     }
 
 
@@ -1373,17 +1506,16 @@ void MainFrame::StopRecording(bool isError, wxString errorMsg, bool resumePrevie
     m_lastRecordingSummary.recoveryPath = m_loggerWorker->GetRecoveryFilePath();
 
     if (!isError) {
-        // 次回録音用にファイル名を自動インクリメント (ディレクトリパスを維持)
+        // 次回録音用にファイル名を自動インクリメント (絶対ディレクトリパスを維持)
         wxFileName curFn(m_txtFilePath->GetValue());
         wxString dir = curFn.GetPath();
+        if (dir.IsEmpty()) {
+            dir = GetDefaultSaveDirectory();
+        }
         wxDateTime now = wxDateTime::Now();
         wxString nextName = wxString::Format(wxT("dlog_%s.bin"), now.Format(wxT("%Y%m%d_%H%M%S")));
-        if (!dir.IsEmpty()) {
-            wxFileName nextFn(dir, nextName);
-            m_txtFilePath->SetValue(nextFn.GetFullPath());
-        } else {
-            m_txtFilePath->SetValue(nextName);
-        }
+        wxFileName nextFn(dir, nextName);
+        m_txtFilePath->SetValue(nextFn.GetFullPath());
     }
     m_hasActiveConfig = false;
 
@@ -1391,8 +1523,10 @@ void MainFrame::StopRecording(bool isError, wxString errorMsg, bool resumePrevie
         wxMessageBox(errorMsg, TrWx(StringId::ErrRecordingGeneral), wxOK | wxICON_ERROR, this);
     }
 
-    // プレビュー再開の試行 (エラー時でもデバイスが健全かつresumePreviewが要求されていれば再開)
-    if (resumePreview && !m_audioMgr->HasDeviceError()) {
+    // プレビュー再開の試行 (記録開始時にプレビュー状態だった場合のみ復帰)
+    bool shouldResumePreview = resumePreview && m_wasPreviewingBeforeRecord && !m_audioMgr->HasDeviceError();
+    m_wasPreviewingBeforeRecord = false;
+    if (shouldResumePreview) {
         if (StartPreview()) {
             return;
         }
@@ -1468,7 +1602,11 @@ void MainFrame::UpdateControlStates() {
         m_btnStartStop->SetBackgroundColour(wxColour(30, 160, 60));
 
         if (!m_hasErrorStatus) {
-            m_lblStatus->SetLabel(TrWx(StringId::StatusStopped));
+            if (m_lastRecordingSummary.hasSummary) {
+                m_lblStatus->SetLabel(TrWx(StringId::StatusRecordingComplete));
+            } else {
+                m_lblStatus->SetLabel(TrWx(StringId::StatusStopped));
+            }
             m_lblStatus->SetForegroundColour(wxColour(120, 120, 120));
         }
     } else if (m_appState == AppState::Previewing) {
@@ -1572,9 +1710,9 @@ void MainFrame::OnTimer(wxTimerEvent& /*event*/) {
         // 1. オーディオデバイス切断・ストリーム異常停止の監視（USB切断等: プレビュー・記録共通）
         if (m_audioMgr->HasDeviceError()) {
             if (m_appState == AppState::Recording) {
-                StopRecording(true, wxT("オーディオデバイスの切断またはストリーム異常停止を検知しました。\n安全のため記録を停止し、ファイルを保存しました。"), false /* resumePreview = false */);
+                StopRecording(true, TrWx(StringId::ErrDeviceDisconnectedRecord), false /* resumePreview = false */);
             } else {
-                StopPreview(true, wxT("オーディオデバイスの切断またはストリーム異常停止を検知しました。\nプレビューを停止しました。"));
+                StopPreview(true, TrWx(StringId::ErrDeviceDisconnectedPreview));
             }
             RefreshDeviceList();
             return;
@@ -1582,7 +1720,7 @@ void MainFrame::OnTimer(wxTimerEvent& /*event*/) {
 
         // 2. ディスク書き込みエラーの監視（記録中のみ）
         if (m_appState == AppState::Recording && m_loggerWorker->HasDiskError()) {
-            StopRecording(true, wxT("ディスク書き込みエラーが発生しました（ディスク容量不足またはドライブ切断）。\n記録を安全停止しました。"), true /* attempt resume preview if device ok */);
+            StopRecording(true, TrWx(StringId::ErrDiskWriteDuringRecord), true /* attempt resume preview if device ok */);
             return;
         }
 
@@ -1642,7 +1780,11 @@ void MainFrame::OnTimer(wxTimerEvent& /*event*/) {
                 int s = tot % 60;
                 double mb = static_cast<double>(m_lastRecordingSummary.totalBytesWritten) / (1024.0 * 1024.0);
                 m_lblDuration->SetLabel(TrFormatWx(StringId::DurationPrevFormat, wxString::Format(wxT("%02d:%02d:%02d (%.2f MB)"), h, m, s, mb)));
-                m_lblFileSize->SetLabel(TrWx(StringId::FileSizeNone));
+                if (m_lastRecordingSummary.isError) {
+                    m_lblFileSize->SetLabel(TrWx(StringId::StatusAbortedPartialKept));
+                } else {
+                    m_lblFileSize->SetLabel(TrFormatWx(StringId::FileSizeFormatMb, wxString::Format(wxT("%.2f"), mb)));
+                }
             } else {
                 m_lblDuration->SetLabel(TrFormatWx(StringId::DurationLiveFormat, wxT("--:--:--")));
                 m_lblFileSize->SetLabel(TrWx(StringId::FileSizeNone));
@@ -1674,6 +1816,18 @@ void MainFrame::OnTimer(wxTimerEvent& /*event*/) {
 }
 
 void MainFrame::OnClose(wxCloseEvent& event) {
+    if (m_activeWavExportWorker && m_activeWavExportWorker->IsRunning()) {
+        int res = wxMessageBox(TrWx(StringId::WavExportConfirmCancel),
+                               TrWx(StringId::ConfirmDialogTitle), wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this);
+        if (res != wxYES) {
+            event.Veto();
+            return;
+        }
+        m_activeWavExportWorker->RequestCancel();
+        event.Veto();
+        return;
+    }
+
     if (m_appState == AppState::Recording) {
         int res = wxMessageBox(TrWx(StringId::ConfirmCloseRecording),
                                TrWx(StringId::ConfirmDialogTitle), wxYES_NO | wxICON_QUESTION, this);
@@ -1752,11 +1906,38 @@ void MainFrame::OnModeChanged(wxBookCtrlEvent& event) {
         if (m_btnHold) m_btnHold->Show(true);
         if (m_btnAcGuide) m_btnAcGuide->Show(true);
         if (m_waveOptSizer) m_waveOptSizer->Layout();
-        if (m_lblDuration) m_lblDuration->SetLabel(TrFormatWx(StringId::DurationLiveFormat, wxT("00:00:00")));
-        if (m_lblFileSize) m_lblFileSize->SetLabel(TrFormatWx(StringId::FileSizeFormatMb, wxT("0.00")));
-        if (m_lblOverruns) {
-            m_lblOverruns->SetLabel(TrWx(StringId::OverrunsNormal));
-            m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
+        if (m_lastRecordingSummary.hasSummary) {
+            int tot = static_cast<int>(m_lastRecordingSummary.durationSec);
+            int h = tot / 3600;
+            int m = (tot % 3600) / 60;
+            int s = tot % 60;
+            double mb = static_cast<double>(m_lastRecordingSummary.totalBytesWritten) / (1024.0 * 1024.0);
+            if (m_lblDuration) {
+                m_lblDuration->SetLabel(TrFormatWx(StringId::DurationPrevFormat, wxString::Format(wxT("%02d:%02d:%02d (%.2f MB)"), h, m, s, mb)));
+            }
+            if (m_lblFileSize) {
+                if (m_lastRecordingSummary.isError) {
+                    m_lblFileSize->SetLabel(TrWx(StringId::StatusAbortedPartialKept));
+                } else {
+                    m_lblFileSize->SetLabel(TrFormatWx(StringId::FileSizeFormatMb, wxString::Format(wxT("%.2f"), mb)));
+                }
+            }
+            if (m_lblOverruns) {
+                if (m_lastRecordingSummary.totalOverruns > 0) {
+                    m_lblOverruns->SetLabel(TrFormatWx(StringId::OverrunsWarningFormat, std::to_string(m_lastRecordingSummary.totalOverruns)));
+                    m_lblOverruns->SetForegroundColour(wxColour(220, 40, 40));
+                } else {
+                    m_lblOverruns->SetLabel(TrWx(StringId::OverrunsNormal));
+                    m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
+                }
+            }
+        } else {
+            if (m_lblDuration) m_lblDuration->SetLabel(TrFormatWx(StringId::DurationLiveFormat, wxT("00:00:00")));
+            if (m_lblFileSize) m_lblFileSize->SetLabel(TrFormatWx(StringId::FileSizeFormatMb, wxT("0.00")));
+            if (m_lblOverruns) {
+                m_lblOverruns->SetLabel(TrWx(StringId::OverrunsNormal));
+                m_lblOverruns->SetForegroundColour(wxColour(30, 150, 30));
+            }
         }
         if (m_lblUiDrops) m_lblUiDrops->SetLabel(TrFormatWx(StringId::UiDropsFormat, std::string("0")));
         UpdateControlStates();
@@ -1765,8 +1946,35 @@ void MainFrame::OnModeChanged(wxBookCtrlEvent& event) {
 }
 
 void MainFrame::OnPlayOpenFile(wxCommandEvent& /*event*/) {
-    wxFileDialog openFileDialog(this, TrWx(StringId::ButtonOpenFile), wxEmptyString, wxEmptyString,
-                                wxT("データログファイル (*.bin;*.dat)|*.bin;*.dat|すべてのファイル (*.*)|*.*"),
+    wxString defaultDir;
+    wxString defaultFile;
+    if (!m_txtPlaybackFile->GetValue().IsEmpty()) {
+        wxFileName fn(m_txtPlaybackFile->GetValue());
+        if (wxDirExists(fn.GetPath())) {
+            defaultDir = fn.GetPath();
+        }
+    }
+    if (defaultDir.IsEmpty() && !m_lastRecordingSummary.finalPath.empty()) {
+        wxFileName fn(wxString::FromUTF8(m_lastRecordingSummary.finalPath.c_str()));
+        if (wxDirExists(fn.GetPath())) {
+            defaultDir = fn.GetPath();
+            if (wxFileExists(fn.GetFullPath())) {
+                defaultFile = fn.GetFullName();
+            }
+        }
+    }
+    if (defaultDir.IsEmpty() && m_txtFilePath) {
+        wxFileName fn(m_txtFilePath->GetValue());
+        if (wxDirExists(fn.GetPath())) {
+            defaultDir = fn.GetPath();
+        }
+    }
+    if (defaultDir.IsEmpty()) {
+        defaultDir = GetDefaultSaveDirectory();
+    }
+
+    wxFileDialog openFileDialog(this, TrWx(StringId::ButtonOpenFile), defaultDir, defaultFile,
+                                TrWx(StringId::FilterDlogFiles),
                                 wxFD_OPEN | wxFD_FILE_MUST_EXIST);
 
     if (openFileDialog.ShowModal() == wxID_CANCEL) return;
@@ -1957,6 +2165,7 @@ void MainFrame::UpdatePlaybackUI() {
     m_txtPlayTime->Enable(opened);
     m_btnSeekTime->Enable(opened);
     m_sliderPlayback->Enable(opened);
+    if (m_btnExportWav) m_btnExportWav->Enable(opened);
 
     if (opened) {
         double curPos = GetCurrentPlaybackPosition();
@@ -2011,4 +2220,143 @@ void MainFrame::UpdatePlaybackUI() {
     }
 }
 
+void MainFrame::OnPlayExportWav(wxCommandEvent& /*event*/) {
+    if (!m_playbackLoader.IsOpen()) return;
+
+    if (m_isPlaying) {
+        PausePlayback();
+    }
+
+    std::vector<std::string> chLabels;
+    for (const auto& meta : m_playbackLoader.GetChannelMetadata()) {
+        chLabels.push_back(meta.name);
+    }
+
+    WavExportDialog dlg(this, m_playbackLoader.GetHeader(), m_playbackLoader.GetTotalFrames(),
+                        m_playbackLoader.GetFilePath(), chLabels);
+    if (dlg.ShowModal() != wxID_OK) {
+        return;
+    }
+
+    WavExportOptions options = dlg.GetOptions();
+
+    WavExportWorker exportWorker;
+    m_activeWavExportWorker = &exportWorker;
+
+    struct WorkerGuard {
+        WavExportWorker*& target;
+        ~WorkerGuard() { target = nullptr; }
+    } guard{m_activeWavExportWorker};
+
+    wxProgressDialog progressDlg(
+        TrWx(StringId::WavExportProgressTitle),
+        wxEmptyString,
+        1000,
+        this,
+        wxPD_APP_MODAL | wxPD_AUTO_HIDE | wxPD_CAN_ABORT | wxPD_ELAPSED_TIME | wxPD_REMAINING_TIME
+    );
+
+    auto startTime = std::chrono::steady_clock::now();
+    bool started = exportWorker.Start(options);
+    if (!started) {
+        wxMessageBox(TrWx(StringId::ErrWavGeneral), TrWx(StringId::WavExportErrorTitle), wxOK | wxICON_ERROR, this);
+        return;
+    }
+
+    bool userCancelConfirmed = false;
+    while (exportWorker.IsRunning()) {
+        wxMilliSleep(50);
+        wxTheApp->Yield();
+
+        double progressRatio = exportWorker.GetProgress();
+        uint64_t processed = exportWorker.GetProcessedFrames();
+        uint64_t total = exportWorker.GetTotalFrames();
+
+        int permille = static_cast<int>(std::round(progressRatio * 1000.0));
+        permille = std::clamp(permille, 0, 999);
+
+        auto now = std::chrono::steady_clock::now();
+        double elapsedSec = std::chrono::duration<double>(now - startTime).count();
+        double etaSec = (progressRatio > 0.01) ? (elapsedSec / progressRatio - elapsedSec) : 0.0;
+        char etaBuf[32];
+        int etaM = static_cast<int>(etaSec) / 60;
+        int etaS = static_cast<int>(etaSec) % 60;
+        std::snprintf(etaBuf, sizeof(etaBuf), "%02d:%02d", etaM, etaS);
+
+        char pctBuf[16];
+        std::snprintf(pctBuf, sizeof(pctBuf), "%.1f", progressRatio * 100.0);
+
+        std::string progMsg = TrFormat(StringId::WavExportProgressMsgFormat, {
+            pctBuf,
+            std::to_string(processed),
+            std::to_string(total),
+            std::string(etaBuf)
+        });
+
+        bool keepGoing = progressDlg.Update(permille, wxString::FromUTF8(progMsg.c_str()));
+        if (!keepGoing && !userCancelConfirmed) {
+            int res = wxMessageBox(TrWx(StringId::WavExportConfirmCancel),
+                                   TrWx(StringId::ConfirmDialogTitle),
+                                   wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, &progressDlg);
+            if (res == wxYES) {
+                userCancelConfirmed = true;
+                exportWorker.RequestCancel();
+            } else {
+                progressDlg.Resume();
+            }
+        }
+    }
+
+    exportWorker.Wait();
+    progressDlg.Update(1000);
+
+    auto endTime = std::chrono::steady_clock::now();
+    double totalElapsedSec = std::chrono::duration<double>(endTime - startTime).count();
+    char elapsedBuf[32];
+    int elM = static_cast<int>(totalElapsedSec) / 60;
+    int elS = static_cast<int>(totalElapsedSec) % 60;
+    std::snprintf(elapsedBuf, sizeof(elapsedBuf), "%02d:%02d", elM, elS);
+
+    WavExportResult result = exportWorker.GetResult();
+    LocalizedError error = exportWorker.GetError();
+
+    if (result.canceled) {
+        wxMessageBox(TrWx(StringId::WavExportCanceled), TrWx(StringId::InfoDialogTitle), wxOK | wxICON_INFORMATION, this);
+        return;
+    }
+
+    if (!result.success) {
+        std::string errDetail = error.FormatCurrent();
+        if (errDetail.empty()) {
+            errDetail = Tr(StringId::ErrWavGeneral);
+        }
+        wxMessageBox(wxString::FromUTF8(errDetail.c_str()), TrWx(StringId::WavExportErrorTitle), wxOK | wxICON_ERROR, this);
+        return;
+    }
+
+    char szBuf[64];
+    double mb = static_cast<double>(result.totalBytesWritten) / (1024.0 * 1024.0);
+    std::snprintf(szBuf, sizeof(szBuf), "%.2f MB", mb);
+
+    if (result.pcm16ClippedSamples > 0) {
+        std::string successMsg = TrFormat(StringId::WavExportSuccessWithClippingFormat, {
+            std::to_string(result.pcm16ClippedSamples),
+            result.destinationPath,
+            std::to_string(result.outputFramesWritten),
+            std::string(szBuf),
+            std::string(elapsedBuf)
+        });
+        wxMessageBox(wxString::FromUTF8(successMsg.c_str()), TrWx(StringId::WavExportSuccessTitle), wxOK | wxICON_WARNING, this);
+    } else {
+        std::string successMsg = TrFormat(StringId::WavExportSuccessFormat, {
+            result.destinationPath,
+            std::to_string(result.outputFramesWritten),
+            std::string(szBuf),
+            std::string(elapsedBuf)
+        });
+        wxMessageBox(wxString::FromUTF8(successMsg.c_str()), TrWx(StringId::WavExportSuccessTitle), wxOK | wxICON_INFORMATION, this);
+    }
+}
+
 } // namespace dlog
+

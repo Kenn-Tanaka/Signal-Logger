@@ -45,9 +45,10 @@ bool DataLoggerWorker::Start(const LoggerConfig& config) {
     m_totalFramesLogged.store(0);
     m_totalBytesWritten.store(0);
     m_bufferOverruns.store(0);
-    m_startTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+    int64_t initialStartMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()
     ).count();
+    m_startTimeMs.store(initialStartMs, std::memory_order_relaxed);
     m_stopTimeMs = 0;
     m_lastWallClockDurationSec = 0.0;
     m_lastDataDurationSec = 0.0;
@@ -81,36 +82,39 @@ bool DataLoggerWorker::Start(const LoggerConfig& config) {
         return false;
     }
 
-    m_fileStream.open(m_temporaryOutputPath, std::ios::out | std::ios::binary | std::ios::trunc);
-    if (!m_fileStream.is_open()) {
-        m_hasDiskError.store(true, std::memory_order_relaxed);
-        std::error_code ec;
-        std::filesystem::remove(m_temporaryOutputPath, ec);
-        return false;
-    }
+    {
+        std::lock_guard<std::mutex> lock(m_streamMutex);
+        m_fileStream.open(m_temporaryOutputPath, std::ios::out | std::ios::binary | std::ios::trunc);
+        if (!m_fileStream.is_open()) {
+            m_hasDiskError.store(true, std::memory_order_relaxed);
+            std::error_code ec;
+            std::filesystem::remove(m_temporaryOutputPath, ec);
+            return false;
+        }
 
-    // 固定長 64 バイトヘッダの構築と書き込み
-    DLogFileHeader header;
-    std::memcpy(header.magic, "DLOG", 4);
-    header.version = DLOG_FORMAT_VERSION;
-    header.headerSize = static_cast<uint32_t>(sizeof(DLogFileHeader));
-    header.channels = static_cast<uint32_t>(m_config.channels);
-    header.sampleRate = static_cast<uint32_t>(std::llround(targetRate));
-    header.sampleFormat = static_cast<uint32_t>(m_config.sampleFormat);
-    header.nativeRate = static_cast<uint32_t>(m_config.nativeSampleRate);
-    header.decimationFactor = static_cast<uint32_t>(m_config.decimationFactor);
-    header.startTimestampUtc = m_startTimeMs;
-    header.fullScaleVoltage = (m_config.fullScaleVoltage > 0.0) ? m_config.fullScaleVoltage : 1.0;
+        // 固定長 64 バイトヘッダの構築と書き込み
+        DLogFileHeader header;
+        std::memcpy(header.magic, "DLOG", 4);
+        header.version = DLOG_FORMAT_VERSION;
+        header.headerSize = static_cast<uint32_t>(sizeof(DLogFileHeader));
+        header.channels = static_cast<uint32_t>(m_config.channels);
+        header.sampleRate = static_cast<uint32_t>(std::llround(targetRate));
+        header.sampleFormat = static_cast<uint32_t>(m_config.sampleFormat);
+        header.nativeRate = static_cast<uint32_t>(m_config.nativeSampleRate);
+        header.decimationFactor = static_cast<uint32_t>(m_config.decimationFactor);
+        header.startTimestampUtc = initialStartMs;
+        header.fullScaleVoltage = (m_config.fullScaleVoltage > 0.0) ? m_config.fullScaleVoltage : 1.0;
 
-    m_fileStream.write(reinterpret_cast<const char*>(&header), sizeof(header));
-    if (!m_fileStream.good()) {
-        m_hasDiskError.store(true, std::memory_order_relaxed);
-        m_fileStream.close();
-        std::error_code ec;
-        std::filesystem::remove(m_temporaryOutputPath, ec);
-        return false;
+        m_fileStream.write(reinterpret_cast<const char*>(&header), sizeof(header));
+        if (!m_fileStream.good()) {
+            m_hasDiskError.store(true, std::memory_order_relaxed);
+            m_fileStream.close();
+            std::error_code ec;
+            std::filesystem::remove(m_temporaryOutputPath, ec);
+            return false;
+        }
+        m_totalBytesWritten += sizeof(header);
     }
-    m_totalBytesWritten += sizeof(header);
 
     // Windows スリープ・休止防止
     m_powerGuard.Acquire();
@@ -121,6 +125,7 @@ bool DataLoggerWorker::Start(const LoggerConfig& config) {
     } catch (...) {
         m_isRunning.store(false);
         m_powerGuard.Release();
+        std::lock_guard<std::mutex> lock(m_streamMutex);
         m_fileStream.close();
         std::error_code ec;
         std::filesystem::remove(m_temporaryOutputPath, ec);
@@ -132,17 +137,19 @@ bool DataLoggerWorker::Start(const LoggerConfig& config) {
 }
 
 bool DataLoggerWorker::MarkCaptureStartedNow() {
+    std::lock_guard<std::mutex> lock(m_streamMutex);
     if (!m_isRunning.load(std::memory_order_relaxed) || !m_fileStream.is_open() ||
         m_totalFramesLogged.load(std::memory_order_relaxed) != 0) {
         return false;
     }
 
-    m_startTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+    int64_t startMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
+    m_startTimeMs.store(startMs, std::memory_order_relaxed);
 
     m_fileStream.seekp(static_cast<std::streamoff>(offsetof(DLogFileHeader, startTimestampUtc)),
                        std::ios::beg);
-    m_fileStream.write(reinterpret_cast<const char*>(&m_startTimeMs), sizeof(m_startTimeMs));
+    m_fileStream.write(reinterpret_cast<const char*>(&startMs), sizeof(startMs));
     m_fileStream.seekp(0, std::ios::end);
     m_fileStream.flush();
     if (!m_fileStream.good()) {
@@ -171,27 +178,30 @@ void DataLoggerWorker::StopInternal(bool commitOutput) {
     }
     m_thread.reset();
 
-    // 残っている全ブロックを完全にフラッシュ
-    AudioBlock block;
-    while (m_queue && m_queue->try_dequeue(block)) {
-        if (!m_hasDiskError.load(std::memory_order_relaxed) && block.frameCount > 0 && m_fileStream.is_open()) {
-            size_t bytes = block.frameCount * static_cast<size_t>(block.channels) * sizeof(float);
-            m_fileStream.write(reinterpret_cast<const char*>(block.samples), bytes);
-            if (!m_fileStream.good()) {
-                m_hasDiskError.store(true, std::memory_order_relaxed);
-            } else {
-                m_totalFramesLogged += block.frameCount;
-                m_totalBytesWritten += bytes;
+    {
+        std::lock_guard<std::mutex> lock(m_streamMutex);
+        // 残っている全ブロックを完全にフラッシュ
+        AudioBlock block;
+        while (m_queue && m_queue->try_dequeue(block)) {
+            if (!m_hasDiskError.load(std::memory_order_relaxed) && block.frameCount > 0 && m_fileStream.is_open()) {
+                size_t bytes = block.frameCount * static_cast<size_t>(block.channels) * sizeof(float);
+                m_fileStream.write(reinterpret_cast<const char*>(block.samples), bytes);
+                if (!m_fileStream.good()) {
+                    m_hasDiskError.store(true, std::memory_order_relaxed);
+                } else {
+                    m_totalFramesLogged += block.frameCount;
+                    m_totalBytesWritten += bytes;
+                }
             }
         }
-    }
 
-    if (m_fileStream.is_open()) {
-        m_fileStream.flush();
-        if (!m_fileStream.good()) {
-            m_hasDiskError.store(true, std::memory_order_relaxed);
+        if (m_fileStream.is_open()) {
+            m_fileStream.flush();
+            if (!m_fileStream.good()) {
+                m_hasDiskError.store(true, std::memory_order_relaxed);
+            }
+            m_fileStream.close();
         }
-        m_fileStream.close();
     }
 
     m_powerGuard.Release();
@@ -200,8 +210,9 @@ void DataLoggerWorker::StopInternal(bool commitOutput) {
     m_stopTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()
     ).count();
-    m_lastWallClockDurationSec = (m_stopTimeMs > m_startTimeMs)
-        ? static_cast<double>(m_stopTimeMs - m_startTimeMs) / 1000.0
+    int64_t startMs = m_startTimeMs.load(std::memory_order_relaxed);
+    m_lastWallClockDurationSec = (m_stopTimeMs > startMs)
+        ? static_cast<double>(m_stopTimeMs - startMs) / 1000.0
         : 0.0;
     double targetFs = m_config.getTargetSampleRate();
     m_lastDataDurationSec = (targetFs > 0.0)
@@ -294,15 +305,18 @@ void DataLoggerWorker::WorkerLoop() {
                 continue;
             }
 
-            if (block.frameCount > 0 && m_fileStream.is_open()) {
-                size_t bytes = block.frameCount * static_cast<size_t>(block.channels) * sizeof(float);
-                m_fileStream.write(reinterpret_cast<const char*>(block.samples), bytes);
-                if (!m_fileStream.good()) {
-                    m_hasDiskError.store(true, std::memory_order_relaxed);
-                    break;
+            if (block.frameCount > 0) {
+                std::lock_guard<std::mutex> lock(m_streamMutex);
+                if (m_fileStream.is_open()) {
+                    size_t bytes = block.frameCount * static_cast<size_t>(block.channels) * sizeof(float);
+                    m_fileStream.write(reinterpret_cast<const char*>(block.samples), bytes);
+                    if (!m_fileStream.good()) {
+                        m_hasDiskError.store(true, std::memory_order_relaxed);
+                        break;
+                    }
+                    m_totalFramesLogged.fetch_add(block.frameCount, std::memory_order_relaxed);
+                    m_totalBytesWritten.fetch_add(bytes, std::memory_order_relaxed);
                 }
-                m_totalFramesLogged.fetch_add(block.frameCount, std::memory_order_relaxed);
-                m_totalBytesWritten.fetch_add(bytes, std::memory_order_relaxed);
             }
         }
 
@@ -322,12 +336,13 @@ LoggerStats DataLoggerWorker::GetStats() const {
     stats.hasDiskError = m_hasDiskError.load(std::memory_order_relaxed);
 
     double targetFs = m_config.getTargetSampleRate();
-    if (stats.isLogging && m_startTimeMs > 0) {
+    int64_t startMs = m_startTimeMs.load(std::memory_order_relaxed);
+    if (stats.isLogging && startMs > 0) {
         auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()
         ).count();
-        stats.wallClockDurationSec = (nowMs > m_startTimeMs)
-            ? static_cast<double>(nowMs - m_startTimeMs) / 1000.0
+        stats.wallClockDurationSec = (nowMs > startMs)
+            ? static_cast<double>(nowMs - startMs) / 1000.0
             : 0.0;
         stats.dataDurationSec = (targetFs > 0.0)
             ? static_cast<double>(stats.totalFramesLogged) / targetFs
@@ -351,7 +366,7 @@ DLogFileHeader DataLoggerWorker::GetWrittenHeader() const {
     header.sampleFormat = static_cast<uint32_t>(m_config.sampleFormat);
     header.nativeRate = static_cast<uint32_t>(m_config.nativeSampleRate);
     header.decimationFactor = static_cast<uint32_t>(m_config.decimationFactor);
-    header.startTimestampUtc = m_startTimeMs;
+    header.startTimestampUtc = m_startTimeMs.load(std::memory_order_relaxed);
     header.fullScaleVoltage = (m_config.fullScaleVoltage > 0.0) ? m_config.fullScaleVoltage : 1.0;
     return header;
 }

@@ -4,7 +4,7 @@
 
 An up to 8-channel signal logger for Windows 10 / 11 (64-bit).
 
-- `DataLogger.exe`: Non-recording preview, DLOG recording, and scaled waveform playback
+- `DataLogger.exe`: Non-recording preview, DLOG recording, scaled waveform playback, and WAV export
 - `DlogToCsv.exe`: CSV/TSV batch conversion, time range trimming, line splitting, and stopped partial file recovery
 
 For installation and operation, refer to the [Quickstart Guide](docs/QUICKSTART.en.md) and [Reference Manual](docs/REFERENCE_MANUAL.en.md).

@@ -21,13 +21,14 @@ An up to 8-channel signal logger for Windows. Using PC audio interfaces as the i
 
 | Component | Purpose |
 |---|---|
-| `DataLogger.exe` | Non-recording preview, up to 8ch recording, time-axis waveform display, data playback |
+| `DataLogger.exe` | Non-recording preview, up to 8ch recording, time-axis waveform display, data playback, upsampled WAV export |
 | `DlogToCsv.exe` | Multi-file DLOG to CSV/TSV conversion, range trimming, row splitting, partial file recovery |
 | `tools/read_dlog.py` | Header verification, 16-bit PCM WAV export (requires Python and NumPy) |
 
 - **Candidate Input Rates**: 32 / 44.1 / 48 / 88.2 / 96 / 192 kHz (dynamically filtered by querying PortAudio for supported device/channel formats)
 - **Recording Rates**: Integer submultiples of native rate (decimation + anti-aliasing filter)
 - **Playback Feature**: Seek and visualize waveforms directly from DLOG binary files without audio output (speed: 0.25x to 16x)
+- **WAV Export**: Export from the Playback tab at the pre-decimation native rate as standard WAV / RF64 (Linear / FIR / ZOH interpolation, Float32 / PCM16, 4 GiB limit / RF64 auto-selection)
 - **Data Protection**: Writes to a temporary file (`.partial`) in the same directory during recording, atomically replacing on clean stop
 
 ---

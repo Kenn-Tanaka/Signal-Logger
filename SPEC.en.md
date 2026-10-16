@@ -58,7 +58,7 @@ Display voltage is normalized PCM $\times$ full-scale voltage. Calibration calcu
 
 ## State Management and UI
 
-Live states: `Stopped`, `Previewing`, `Recording`. Transitioning from preview to recording stops and restarts the audio stream.
+Live states: `Stopped`, `Previewing`, `Recording`. Transitioning from preview to recording stops and restarts the audio stream. Upon stopping recording, the application resumes preview only if preview was active before recording started; otherwise it returns to the `Stopped` state.
 
 Display time windows range from 1 ms to 10 s across 10 major grid divisions. Shows center time, time scale, and channel levels. Waveform Hold freezes rendering while recording continues.
 
@@ -126,6 +126,54 @@ Provides random-access 64-bit frame seeking via `DlogReader` and background 65,5
 
 `ConversionPlan` verifies absence of collisions between output paths and inputs before conversion begins. Supports relative seconds, UTC timestamps, sample indices, line splitting, float precision (4/6/8 digits), and custom channel selections.
 
+## WAV Export
+
+Exports the verified DLOG file currently open in the "Recorded Waveform Playback" tab to a standard WAV or 64-bit RF64 file.
+
+### Sampling Rates and Upsampling
+- **Output Sample Rate**: Strictly the pre-decimation `native_rate` from the DLOG header.
+- **Effective Input Rate**: `native_rate / decimation_factor` (unrounded exact quotient).
+- **Interpolation Factor**: $N = \text{decimation\_factor}$.
+- **Important Notice**: Interpolation does not restore lost frequency components or raw samples of the original analog signal.
+- **Excluded Items**: Playback speed, display vertical gain, waveform hold state, Min/Max display compression, full-scale voltage conversion (normalized PCM values are exported directly), and auto-normalization are never applied to the WAV export.
+
+### Interpolation Methods
+1. **Zero-Order Hold (ZOH)**: Holds the current input sample value constant until the next input sample arrives.
+2. **Linear Interpolation [Default]**: Connects adjacent input sample points with straight line segments.
+3. **Bandlimited Interpolation (FIR)**:
+   - **Architecture**: Polyphase windowed-sinc interpolation filter (Blackman window).
+   - **Filter Length**: Semi-length $P = 4$ ($2P = 8$ taps per polyphase branch).
+   - **Cutoff Frequency**: $f_c = 0.5 / N$.
+   - **DC Gain**: Normalized so the sum of tap weights for each subphase branch equals 1.0 (guaranteeing 0 dB DC ripple).
+   - **Sinc Zero-Crossing**: At subphase $s = 0$, $h_0[0] = 1.0$ and all other taps are $0.0$, reproducing raw samples bit-identically at input sample grid points.
+   - **Boundary Handling**: Clamped endpoint padding (pre-margin $P-1 = 3$ frames, post-margin $P = 4$ frames).
+   - **Delay Compensation**: Zero-phase centering ensures no filter group delay is introduced to output timestamps or frame counts.
+   - **Bounded Memory**: Small-chunk streaming (max 4096 output frames/chunk) bounds memory footprint to $\le 500$ KB regardless of factor $N$.
+   - **State Retention**: Retains per-channel and inter-chunk filter history across streaming blocks to prevent waveform discontinuities at chunk boundaries.
+   - **Notice**: May introduce subtle ringing or overshoot near steep transition edges. Automatically disabled if decimation factor $N = 1$ (no interpolation required).
+
+### Output Range and Time Axis
+- **Entire File [Default]**: Exports the complete duration.
+- **Specified Range**: Half-open interval $[start, end)$. Reuses `ParsePlaybackTimeString` and strictly maintains 64-bit frame arithmetic internally.
+
+### Channel Selection and Layout
+- Allows selecting 1 to 8 channels. Preserves channel order ascending by original channel index.
+- Multi-channel WAV ($\ge 3$ channels) utilizes `WAVEFORMATEXTENSIBLE` with `dwChannelMask = 0` (unspecified / direct output) to prevent arbitrary surround speaker mapping.
+
+### Formats and Word Length
+- **IEEE 32-bit Float [Default]**: Normalized floating-point values in $[-1.0, +1.0]$.
+- **16-bit Signed PCM**: Maps $[-1.0, +1.0] \to [-32768, +32767]$. Rejects non-finite values (NaN/Inf) as errors. Clips out-of-range samples and reports clipped sample counts upon completion.
+
+### 4 GiB Size Boundary and RF64
+- **4 GiB Standard WAV Limit Checkbox [Default: Checked]**: Not persisted; re-enables on each dialog invocation.
+- Checked: Rejects exports exceeding 4 GiB.
+- Unchecked: Automatically exports in 64-bit RF64 format (`ds64` chunk) when size reaches or exceeds 4 GiB.
+
+### Safety and Isolation
+- Writes streaming chunks to a temporary file (`.~*.tmp`) in the destination directory and performs atomic replacement upon completion.
+- Cleans up temporary files safely upon error or user cancellation, preserving existing destination files.
+- Operates on a dedicated worker thread with an isolated `DlogReader` instance, leaving GUI playback and seeking positions unaffected.
+
 ## Internationalization (Bilingual UI)
 
 Both `DataLogger.exe` and `DlogToCsv.exe` support hot-switching between Japanese and English via the top menu bar (`言語 / Language` -> `● 日本語`, `○ English`).
@@ -140,7 +188,7 @@ Both `DataLogger.exe` and `DlogToCsv.exe` support hot-switching between Japanese
 
 ## Verification and Change Management
 
-CTest registers `TestDataLogger`, `TestConverter`, and bilingual startup smoke tests for both applications (`TestDataLoggerSmokeJa`, `TestDataLoggerSmokeEn`, `TestDlogToCsvSmokeJa`, `TestDlogToCsvSmokeEn`). Live audio capture tests are disabled by default (`DLOG_ENABLE_HARDWARE_TESTS=ON`, or `build.ps1 -HardwareTests`).
+CTest registers `TestDataLogger`, `TestConverter`, `TestWavExport`, and bilingual startup smoke tests for both applications (`TestDataLoggerSmokeJa`, `TestDataLoggerSmokeEn`, `TestDlogToCsvSmokeJa`, `TestDlogToCsvSmokeEn`). Live audio capture tests are disabled by default (`DLOG_ENABLE_HARDWARE_TESTS=ON`, or `build.ps1 -HardwareTests`).
 
 Binary packages contain executables, user guides, license notices, and provenance metadata (SPEC and developer guidelines are excluded from binary ZIP distributions). Source builder packages contain source code, dependency specifications, and developer documentation.
 

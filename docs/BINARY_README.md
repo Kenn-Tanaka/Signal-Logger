@@ -4,7 +4,7 @@
 
 Windows 10／11（64-bit）用の最大8チャネル信号ロガーです。
 
-- `DataLogger.exe`：保存しないプレビュー、DLOG記録、保存波形の倍率再生
+- `DataLogger.exe`：保存しないプレビュー、DLOG記録、保存波形の倍率再生、WAVエクスポート
 - `DlogToCsv.exe`：CSV／TSV変換、範囲指定、分割、停止済み部分ファイルの復旧
 
 導入・操作は[クイックスタート](docs/QUICKSTART.md)と[リファレンスマニュアル](docs/REFERENCE_MANUAL.md)を参照してください。

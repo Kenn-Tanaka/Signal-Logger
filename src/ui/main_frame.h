@@ -5,6 +5,9 @@
 #include "storage/data_logger_worker.h"
 #include "ui/waveform_panel.h"
 #include "playback/playback_loader_worker.h"
+#include "export/wav_export_types.h"
+#include "export/wav_export_worker.h"
+#include "ui/wav_export_dialog.h"
 #include "playback/playback_time_parser.h"
 
 #include <wx/frame.h>
@@ -78,6 +81,7 @@ private:
     void OnPlaySpeedSelect(wxCommandEvent& event);
     void OnPlayTimeEnter(wxCommandEvent& event);
     void OnPlaySeek(wxCommandEvent& event);
+    void OnPlayExportWav(wxCommandEvent& event);
     void OnPlaySliderThumbTrack(wxScrollEvent& event);
     void OnPlaySliderThumbRelease(wxScrollEvent& event);
     void OnPlaySliderScroll(wxScrollEvent& event);
@@ -95,10 +99,12 @@ private:
     bool StartRecording();
     void StopRecording(bool isError = false, wxString errorMsg = wxEmptyString, bool resumePreview = true);
     void UpdateControlStates();
+    wxString GetDefaultSaveDirectory() const;
     LoggerConfig BuildConfig(bool forRecording, wxString& errorMsg) const;
     bool WriteCompanionMetadata(const LoggerConfig& config, const DLogFileHeader& header);
 
     AppState m_appState = AppState::Stopped;
+    bool m_wasPreviewingBeforeRecord = false;
 
     // コアマネージャ
     std::unique_ptr<AudioDeviceManager> m_audioMgr;
@@ -135,6 +141,8 @@ private:
     // 再生モード UI コントロール
     wxTextCtrl* m_txtPlaybackFile = nullptr;
     wxButton* m_btnOpenPlaybackFile = nullptr;
+    wxButton* m_btnExportWav = nullptr;
+    WavExportWorker* m_activeWavExportWorker = nullptr;
     wxButton* m_btnPlayFirst = nullptr;
     wxButton* m_btnPlayPause = nullptr;
     wxButton* m_btnPlayLast = nullptr;
@@ -248,6 +256,7 @@ private:
         ID_PLAY_SPEED_CHOICE,
         ID_PLAY_TIME_TXT,
         ID_PLAY_SEEK_BTN,
+        ID_PLAY_EXPORT_WAV_BTN,
         ID_PLAY_SLIDER,
         ID_UPDATE_TIMER
     };

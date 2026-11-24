@@ -1,4 +1,4 @@
-#include "storage/data_logger_worker.h"
+#include "storage/signal_logger_worker.h"
 #include <chrono>
 #include <iostream>
 #include <cstring>
@@ -13,15 +13,15 @@
 
 namespace dlog {
 
-DataLoggerWorker::DataLoggerWorker() {
+SignalLoggerWorker::SignalLoggerWorker() {
     m_queue = std::make_unique<moodycamel::ReaderWriterQueue<AudioBlock>>(QUEUE_CAPACITY);
 }
 
-DataLoggerWorker::~DataLoggerWorker() {
+SignalLoggerWorker::~SignalLoggerWorker() {
     Stop();
 }
 
-bool DataLoggerWorker::Start(const LoggerConfig& config) {
+bool SignalLoggerWorker::Start(const LoggerConfig& config) {
     if (m_isRunning.load()) {
         return false;
     }
@@ -121,7 +121,7 @@ bool DataLoggerWorker::Start(const LoggerConfig& config) {
 
     m_isRunning.store(true);
     try {
-        m_thread = std::make_unique<std::thread>(&DataLoggerWorker::WorkerLoop, this);
+        m_thread = std::make_unique<std::thread>(&SignalLoggerWorker::WorkerLoop, this);
     } catch (...) {
         m_isRunning.store(false);
         m_powerGuard.Release();
@@ -136,7 +136,7 @@ bool DataLoggerWorker::Start(const LoggerConfig& config) {
     return true;
 }
 
-bool DataLoggerWorker::MarkCaptureStartedNow() {
+bool SignalLoggerWorker::MarkCaptureStartedNow() {
     std::lock_guard<std::mutex> lock(m_streamMutex);
     if (!m_isRunning.load(std::memory_order_relaxed) || !m_fileStream.is_open() ||
         m_totalFramesLogged.load(std::memory_order_relaxed) != 0) {
@@ -159,15 +159,15 @@ bool DataLoggerWorker::MarkCaptureStartedNow() {
     return true;
 }
 
-void DataLoggerWorker::Stop() {
+void SignalLoggerWorker::Stop() {
     StopInternal(true);
 }
 
-void DataLoggerWorker::Abort() {
+void SignalLoggerWorker::Abort() {
     StopInternal(false);
 }
 
-void DataLoggerWorker::StopInternal(bool commitOutput) {
+void SignalLoggerWorker::StopInternal(bool commitOutput) {
     if (!m_isRunning.load()) {
         return;
     }
@@ -229,7 +229,7 @@ void DataLoggerWorker::StopInternal(bool commitOutput) {
     }
 }
 
-bool DataLoggerWorker::FinalizeOutput() {
+bool SignalLoggerWorker::FinalizeOutput() {
     if (m_temporaryOutputPath.empty() || m_finalOutputPath.empty()) {
         return false;
     }
@@ -268,7 +268,7 @@ bool DataLoggerWorker::FinalizeOutput() {
 #endif
 }
 
-bool DataLoggerWorker::EnqueueBlock(const AudioBlock& block) {
+bool SignalLoggerWorker::EnqueueBlock(const AudioBlock& block) {
     if (!m_isRunning.load(std::memory_order_relaxed)) {
         return false;
     }
@@ -288,7 +288,7 @@ bool DataLoggerWorker::EnqueueBlock(const AudioBlock& block) {
     return success;
 }
 
-void DataLoggerWorker::WorkerLoop() {
+void SignalLoggerWorker::WorkerLoop() {
     // スレッド優先度を通常より高めに設定（I/O遅延耐性向上）
 #ifdef _WIN32
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
@@ -327,7 +327,7 @@ void DataLoggerWorker::WorkerLoop() {
     }
 }
 
-LoggerStats DataLoggerWorker::GetStats() const {
+LoggerStats SignalLoggerWorker::GetStats() const {
     LoggerStats stats;
     stats.totalFramesLogged = m_totalFramesLogged.load(std::memory_order_relaxed);
     stats.totalBytesWritten = m_totalBytesWritten.load(std::memory_order_relaxed);
@@ -356,7 +356,7 @@ LoggerStats DataLoggerWorker::GetStats() const {
     return stats;
 }
 
-DLogFileHeader DataLoggerWorker::GetWrittenHeader() const {
+DLogFileHeader SignalLoggerWorker::GetWrittenHeader() const {
     DLogFileHeader header{};
     std::memcpy(header.magic, "DLOG", 4);
     header.version = DLOG_FORMAT_VERSION;

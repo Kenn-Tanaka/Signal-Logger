@@ -18,7 +18,7 @@ Invoke-WithSafeMappedDrive $project {
     foreach ($rel in $current.Keys) {
         if (!$prov.source_hashes.PSObject.Properties[$rel] -or $prov.source_hashes.$rel -ne $current[$rel]) { throw "Source changed since build: $rel" }
     }
-    foreach ($name in @('DataLogger.exe','DlogToCsv.exe')) {
+    foreach ($name in @('SignalLogger.exe','SlogToCsv.exe')) {
         $entry = @($prov.executables | Where-Object { $_.name -eq $name })
         if ($entry.Count -ne 1 -or $entry[0].sha256 -ne (Get-FileHash "$build/$name").Hash) { throw "Executable changed: $name" }
         $imports = @(& objdump -p "$build/$name" | Select-String 'DLL Name:')
@@ -38,7 +38,7 @@ Invoke-WithSafeMappedDrive $project {
         if ($LASTEXITCODE -ne 0) { throw 'Converter tests failed.' }
         & "$build/test_wav_export.exe"
         if ($LASTEXITCODE -ne 0) { throw 'WAV export tests failed.' }
-        foreach ($exe in @('DataLogger.exe','DlogToCsv.exe')) {
+        foreach ($exe in @('SignalLogger.exe','SlogToCsv.exe')) {
             foreach ($lang in @('ja','en')) {
                 $smoke = Start-Process -FilePath "$build/$exe" -ArgumentList @('--smoke-test',"--language=$lang") -PassThru -WindowStyle Hidden
                 if (!$smoke.WaitForExit(15000)) { $smoke.Kill(); throw "Smoke test timeout: $exe ($lang)." }
@@ -50,7 +50,7 @@ Invoke-WithSafeMappedDrive $project {
     $stage = Join-Path $OutputDir ('.binary-stage-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory "$stage/docs" -Force | Out-Null
     try {
-        foreach ($name in @('DataLogger.exe','DlogToCsv.exe','build_provenance.json')) { Copy-Item -LiteralPath "$build/$name" -Destination $stage }
+        foreach ($name in @('SignalLogger.exe','SlogToCsv.exe','build_provenance.json')) { Copy-Item -LiteralPath "$build/$name" -Destination $stage }
         foreach ($name in @('LICENSE','LICENSES.md')) { Copy-Item -LiteralPath "$root/$name" -Destination $stage }
         Copy-Item -LiteralPath "$root/docs/BINARY_README.md" -Destination "$stage/README.md"
         Copy-Item -LiteralPath "$root/docs/BINARY_README.en.md" -Destination "$stage/README.en.md"
@@ -62,7 +62,7 @@ Invoke-WithSafeMappedDrive $project {
         }
         Assert-MarkdownLinks $stage
         & "$PSScriptRoot/test-packaging.ps1" -Directory $stage -Kind Binary
-        Complete-Package $stage (Join-Path $OutputDir "DataLogger-v$Version-win64.zip")
+        Complete-Package $stage (Join-Path $OutputDir "SignalLogger-v$Version-win64.zip")
     } finally {
         Remove-PackageStage $stage $OutputDir
     }

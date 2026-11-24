@@ -2,7 +2,7 @@
 
 # Reference Manual
 
-Target Audience: Users of DataLogger, DlogToCsv, and the auxiliary Python tool. System architecture specifications and developer rules are not included in binary packages; refer to source/builder distributions. The auxiliary Python tool is also provided in the builder distribution.
+Target Audience: Users of Signal Logger, SlogToCsv, and the auxiliary Python tool. System architecture specifications and developer rules are not included in binary packages; refer to source/builder distributions. The auxiliary Python tool is also provided in the builder distribution.
 
 ## Terminology and Measurement Notes
 
@@ -158,7 +158,7 @@ Provides header inspection and 16-bit PCM WAV export only (no plotting UI). WAV 
 
 ## Settings & Best Practices
 
-UI language preferences (`言語 / Language` menu) are stored per-user in `%LOCALAPPDATA%\DataLoggerSuite\settings.ini` and can also be overridden via the `--language=ja|en` CLI option. Do not rely on persistent hardware settings; verify device, channel count, rate, and path before each recording session. For portable deployment, keep the executables, documentation, and licenses together in the same folder structure.
+UI language preferences (`言語 / Language` menu) are shared by both apps and stored per-user in `%LOCALAPPDATA%\SignalLogger\settings.ini`. Both apps read the legacy preference if the new file does not exist. The `--language=ja|en` CLI option overrides the saved language. Verify the device, channel count, rate, and path before each recording session. For portable deployment, keep the executables, documentation, and licenses together in the same folder structure.
 
 ## Language Selection & Data Format Independence
 

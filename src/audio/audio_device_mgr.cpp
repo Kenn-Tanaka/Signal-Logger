@@ -88,7 +88,7 @@ PaError AudioDeviceManager::CheckInputFormatSupport(
     return Pa_IsFormatSupported(&inputParams, nullptr, sampleRate);
 }
 
-bool AudioDeviceManager::OpenStream(const LoggerConfig& config, std::shared_ptr<DataLoggerWorker> loggerWorker) {
+bool AudioDeviceManager::OpenStream(const LoggerConfig& config, std::shared_ptr<SignalLoggerWorker> loggerWorker) {
     if (m_isStreaming.load() || m_paStream || m_decimatorThread) {
         StopStream();
     }

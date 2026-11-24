@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Data-Logger Binary File Reader & Exporter (.bin / .dat)
+Signal Logger Binary File Reader & Exporter (.bin / .dat)
 """
 
 import sys
@@ -45,7 +45,7 @@ def read_dlog_file(filepath):
         if not math.isfinite(effective_rate) or effective_rate <= 0:
             raise ValueError("実効サンプルレートが不正です")
 
-        print("=== Data-Logger ファイル情報 ===")
+        print("=== Signal Logger ファイル情報 ===")
         print(f"ファイル: {filepath}")
         print(f"マジック: {magic_str} (バージョン: {version})")
         print(f"チャネル数: {channels}")
@@ -96,7 +96,7 @@ def export_wav(dlog_data, out_wav):
     print(f"WAVファイルへ出力完了: {out_wav}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Data-Logger バイナリファイル解析・エクスポートツール")
+    parser = argparse.ArgumentParser(description="Signal Logger バイナリファイル解析・エクスポートツール")
     parser.add_argument("file", help="入力 .bin または .dat ファイルパス")
     parser.add_argument("--info", action="store_true", help="ヘッダと記録情報を表示（既定動作）")
     parser.add_argument("--wav", metavar="OUTPUT.wav", help="16-bit PCM WAVとして書き出すパス")

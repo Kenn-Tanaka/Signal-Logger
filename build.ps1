@@ -52,7 +52,7 @@ Invoke-WithSafeMappedDrive $PSScriptRoot {
         dependencies=$usedDependencies; deps_cache_key=$dep.cache_key;
         dependency_marker_sha256=(Get-FileHash "$root/.deps/install/build_completed.json").Hash;
         source_hashes=$sourceHashes;
-        executables=@(foreach($name in @('DataLogger.exe','DlogToCsv.exe')) {
+        executables=@(foreach($name in @('SignalLogger.exe','SlogToCsv.exe')) {
             [ordered]@{name=$name; sha256=(Get-FileHash "$build/$name").Hash; size=(Get-Item "$build/$name").Length}
         });
         tests=[ordered]@{executed=$true; full_suite=[bool]$Test; hardware_enabled=[bool]$HardwareTests;

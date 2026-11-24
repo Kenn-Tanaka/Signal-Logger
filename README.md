@@ -1,6 +1,6 @@
 [English](README.en.md)
 
-# Data-Logger Suite
+# Signal Logger
 
 Windows用の最大8チャネル信号ロガーです。PC用オーディオインターフェースを入力フロントエンドとし、波形リアルタイム表示、DLOGバイナリ記録、記録データの波形再生、CSV／TSV変換を提供します。
 
@@ -21,8 +21,8 @@ Windows用の最大8チャネル信号ロガーです。PC用オーディオイ�
 
 | 対象 | 用途 |
 |---|---|
-| `DataLogger.exe` | 保存しないプレビュー、最大8ch記録、時間軸付き波形表示、記録データ再生、アップサンプリングWAVエクスポート |
-| `DlogToCsv.exe` | 複数DLOGのCSV／TSV変換、範囲指定、行分割、部分ファイルのコピー復旧 |
+| `SignalLogger.exe` | 保存しないプレビュー、最大8ch記録、時間軸付き波形表示、記録データ再生、アップサンプリングWAVエクスポート |
+| `SlogToCsv.exe` | 複数DLOGのCSV／TSV変換、範囲指定、行分割、部分ファイルのコピー復旧 |
 | `tools/read_dlog.py` | ヘッダ確認、16-bit PCM WAV書出し（PythonとNumPyが別途必要） |
 
 - **入力レート候補**: 32 / 44.1 / 48 / 88.2 / 96 / 192 kHz（選択デバイス・チャネル数に対するPortAudioの形式照会で動的絞り込み）
@@ -63,7 +63,7 @@ Windows用の最大8チャネル信号ロガーです。PC用オーディオイ�
 ```
 （または `build.bat -Test`）
 
-- 実行ファイルは `build/` ディレクトリに生成されます（`build/DataLogger.exe`, `build/DlogToCsv.exe`）。
+- 実行ファイルは `build/` ディレクトリに生成されます（`build/SignalLogger.exe`, `build/SlogToCsv.exe`）。
 - CTestにより、ロガー・CSV変換・WAV出力の3件と、両アプリの日英起動試験4件の計7件が実行されます。
 - 実機録音試験は通常実行しません。必要な場合のみ `-HardwareTests -Test` を指定します。
 
@@ -77,8 +77,8 @@ Windows用の最大8チャネル信号ロガーです。PC用オーディオイ�
 - 静的リンク検証（PE DLL依存検査により非OS DLLの混入を遮断）
 - バイナリ配布はEXE・利用者向け文書・通知・来歴のみ（SPEC・開発規約は含めない）
 - 依存revisionおよびSHA-256ハッシュを記録した `MANIFEST.txt` の自動生成
-- `dist/DataLogger-v<Version>-win64.zip` アーカイブの出力
-- 別配布の `dist/DataLogger-v<Version>-builder.zip` はソース・スクリプト・開発文書を含み、ライブラリとコンパイラは含まない
+- `dist/SignalLogger-v<Version>-win64.zip` アーカイブの出力
+- 別配布の `dist/SignalLogger-v<Version>-builder.zip` はソース・スクリプト・開発文書を含み、ライブラリとコンパイラは含まない
 - 同名ZIPは上書きせず停止。別出力先または版番号を指定する
 
 Builder ZIPの検証は `scripts/test-clean-build.ps1 -BuilderZip <ZIPのパス>` で行います。

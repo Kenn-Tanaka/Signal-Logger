@@ -132,7 +132,7 @@ MainFrame::MainFrame(const wxString& title, const wxPoint& pos, const wxSize& si
       m_timer(this, ID_UPDATE_TIMER) {
 
     m_audioMgr = std::make_unique<AudioDeviceManager>();
-    m_loggerWorker = std::make_shared<DataLoggerWorker>();
+    m_loggerWorker = std::make_shared<SignalLoggerWorker>();
 
     InitUI();
     RefreshDeviceList();

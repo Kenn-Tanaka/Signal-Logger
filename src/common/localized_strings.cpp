@@ -16,8 +16,8 @@ struct TranslationEntry {
 // 全StringIdに対する翻訳テーブル
 const std::unordered_map<StringId, TranslationEntry> g_translations = {
     // --- アプリケーション全般・メニュー ---
-    { StringId::AppTitleLogger, { "シグナル・ロガー", "Signal Logger" } },
-    { StringId::AppTitleConverter, { "シグナル・コンバータ", "Signal Converter" } },
+    { StringId::AppTitleLogger, { "Signal Logger", "Signal Logger" } },
+    { StringId::AppTitleConverter, { "SlogToCsv", "SlogToCsv" } },
     { StringId::MenuLanguage, { "言語 / Language", "言語 / Language" } },
     { StringId::MenuLanguageJapanese, { "日本語", "日本語" } },
     { StringId::MenuLanguageEnglish, { "English", "English" } },

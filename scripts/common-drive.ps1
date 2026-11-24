@@ -125,6 +125,8 @@ function Get-BuilderFiles {
         'LICENSE','LICENSES.md','.gitignore','tests/test_dlog.cpp','tests/test_converter.cpp','tests/test_wav_export.cpp','tests/test_build_scripts.ps1',
         'tests/fixtures/README.md','tests/fixtures/generate_fixtures.py','tools/read_dlog.py',
         'deps/dependencies.lock.json','deps/runtime-notices.lock.json',
+        'src/resources/signal_logger.rc','src/resources/signal_logger.ico',
+        'src/resources/slog_to_csv.rc','src/resources/slog_to_csv.ico',
         'docs/QUICKSTART.md','docs/QUICKSTART.en.md','docs/REFERENCE_MANUAL.md','docs/REFERENCE_MANUAL.en.md',
         'docs/BINARY_README.md','docs/BINARY_README.en.md','docs/BUILDING.md','docs/BUILDING.en.md',
         'scripts/common-drive.ps1','scripts/build-deps.ps1','scripts/package.ps1','scripts/package-builder.ps1',

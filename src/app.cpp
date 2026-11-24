@@ -4,17 +4,21 @@
 #include "common/localized_strings.h"
 
 #include <wx/cmdline.h>
+#ifdef __WXMSW__
+#include <wx/iconbndl.h>
+#include <windows.h>
+#endif
 #include <cstdlib>
 
 namespace dlog {
 
-void DataLoggerApp::OnInitCmdLine(wxCmdLineParser& parser) {
+void SignalLoggerApp::OnInitCmdLine(wxCmdLineParser& parser) {
     parser.AddSwitch(wxEmptyString, wxT("smoke-test"), wxT("Run startup smoke test"));
     parser.AddOption(wxEmptyString, wxT("language"), wxT("Override UI language (ja|en)"), wxCMD_LINE_VAL_STRING);
     wxApp::OnInitCmdLine(parser);
 }
 
-bool DataLoggerApp::OnCmdLineParsed(wxCmdLineParser& parser) {
+bool SignalLoggerApp::OnCmdLineParsed(wxCmdLineParser& parser) {
     m_smokeTest = parser.Found(wxT("smoke-test"));
     wxString langVal;
     if (parser.Found(wxT("language"), &langVal)) {
@@ -26,7 +30,7 @@ bool DataLoggerApp::OnCmdLineParsed(wxCmdLineParser& parser) {
     return wxApp::OnCmdLineParsed(parser);
 }
 
-bool DataLoggerApp::OnInit() {
+bool SignalLoggerApp::OnInit() {
     if (!wxApp::OnInit()) {
         return false;
     }
@@ -36,6 +40,9 @@ bool DataLoggerApp::OnInit() {
         wxDefaultPosition,
         wxSize(960, 680)
     );
+#ifdef __WXMSW__
+    frame->SetIcons(wxIconBundle("APP_ICON", ::GetModuleHandleW(nullptr)));
+#endif
     SetTopWindow(frame);
     frame->Centre();
     frame->Show(true);
@@ -43,6 +50,11 @@ bool DataLoggerApp::OnInit() {
     if (m_smokeTest) {
         CallAfter([this, frame]() {
             bool ok = frame->PerformSmokeTest();
+#ifdef __WXMSW__
+            const auto& icons = frame->GetIcons();
+            ok = ok && icons.GetIconOfExactSize(16).IsOk() && icons.GetIconOfExactSize(32).IsOk()
+                && icons.GetIconOfExactSize(256).IsOk();
+#endif
             m_smokeTestExitCode = ok ? 0 : 1;
             frame->Close(true);
         });
@@ -52,7 +64,7 @@ bool DataLoggerApp::OnInit() {
     return true;
 }
 
-int DataLoggerApp::OnRun() {
+int SignalLoggerApp::OnRun() {
     int ret = wxApp::OnRun();
     if (m_smokeTest) {
         return m_smokeTestExitCode;

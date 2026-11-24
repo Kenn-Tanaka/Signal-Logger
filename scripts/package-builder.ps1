@@ -17,7 +17,7 @@ try {
         Copy-Item -LiteralPath (Join-Path $root $rel) -Destination $dest
     }
     & "$PSScriptRoot/test-packaging.ps1" -Directory $stage -Kind Builder
-    Complete-Package $stage (Join-Path $OutputDir "DataLogger-v$Version-builder.zip")
+    Complete-Package $stage (Join-Path $OutputDir "SignalLogger-v$Version-builder.zip")
 } finally {
     Remove-PackageStage $stage $OutputDir
 }

@@ -1,8 +1,8 @@
 [English](SPEC.en.md)
 
-# 実装仕様書
+# Signal Logger 実装仕様書
 
-基準日：2026-10-14。対象：現在のC++ソース、CMake、Python補助ツール。配布EXEの同一性や全機能の動的検証を示す文書ではありません。
+基準日：2026-11-24。対象：現在のC++ソース、CMake、Python補助ツール。配布EXEの同一性や全機能の動的検証を示す文書ではありません。
 
 ## 目的・適用範囲
 
@@ -20,7 +20,7 @@ PCオーディオ入力を使い、最大8chを取得・表示・長時間記録
 | src/ui/time_axis_calculator.* | 時間範囲・目盛計算 |
 | src/audio/audio_device_mgr.* | PortAudio列挙、形式照会、ストリーム、Raw／UIキュー |
 | src/dsp/decimator_processor.* | 整数比デシメーション |
-| src/storage/data_logger_worker.* | 保存キュー、DLOG書込、確定・回収先 |
+| src/storage/signal_logger_worker.* | 保存キュー、DLOG書込、確定・回収先 |
 | src/storage/power_manager.h | Windows電源抑制 |
 | src/playback/* | 時刻解析、ウィンドウ要求、バックグラウンド読込 |
 | src_converter/* | DLOG検査・復旧、変換計画、CSV出力、バッチ・GUI |
@@ -199,7 +199,9 @@ ConversionPlanで時間範囲・間引き・拡張子・分割数を計画し、
 
 ## 検証と変更管理
 
-CTestにはTestDataLogger、TestConverter、TestWavExport、および両アプリ×両言語のGUI起動スモークテスト（TestDataLoggerSmokeJa、TestDataLoggerSmokeEn、TestDlogToCsvSmokeJa、TestDlogToCsvSmokeEn）を登録しています。実機録音は既定で無効です。`DLOG_ENABLE_HARDWARE_TESTS=ON`（build.ps1では-HardwareTests）でTestAudioHardwareを追加します。機器なしでスキップされる試験の有無も結果に記録してください。スモークテストはCallAfterでイベントループ開始後に操作してCloseしますが、すべての描画・タイマーを網羅しません。
+両アプリの表示言語は `%LOCALAPPDATA%\SignalLogger\settings.ini` に保存します。新しい設定ファイルがまだない場合は、旧版の言語設定を読み込みます。
+
+CTestにはTestSignalLogger、TestConverter、TestWavExport、および両アプリ×両言語のGUI起動スモークテスト（TestSignalLoggerSmokeJa、TestSignalLoggerSmokeEn、TestSlogToCsvSmokeJa、TestSlogToCsvSmokeEn）を登録しています。実機録音は既定で無効です。`DLOG_ENABLE_HARDWARE_TESTS=ON`（build.ps1では-HardwareTests）でTestAudioHardwareを追加します。機器なしでスキップされる試験の有無も結果に記録してください。スモークテストはCallAfterでイベントループ開始後に操作してCloseしますが、すべての描画・タイマーを網羅しません。
 
 言語切替はUI表示のみを更新し、DLOGバイナリやCSV出力形式を変更しません。同一DLOGに対するCSV変換結果は100%バイト一致（完全一致）しますが、独立した実機録音セッション間の完全一致は物理クロック差等により保証されません。再生要求はReader・ヘッダを同一セッションオブジェクトへ固定し（PLAY-001）、v2メタデータは必須識別情報の厳格検証（DATA-001）を実施します。校正操作はプレビュー中または停止中に限定され、記録中の換算係数変更は禁止されています（FUNC-001）。
 

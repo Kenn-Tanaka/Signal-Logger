@@ -4,10 +4,10 @@
 
 namespace dlog {
 
-class DataLoggerApp : public wxApp {
+class SignalLoggerApp : public wxApp {
 public:
-    DataLoggerApp() = default;
-    ~DataLoggerApp() override = default;
+    SignalLoggerApp() = default;
+    ~SignalLoggerApp() override = default;
 
     bool OnInit() override;
     int OnRun() override;

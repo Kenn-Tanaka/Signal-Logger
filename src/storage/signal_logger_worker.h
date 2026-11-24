@@ -18,10 +18,10 @@ namespace dlog {
  * @brief ファイル保存ワーカースレッドクラス
  * ロックフリー・キューからデシメーション済みデータを取り出し、高速バイナリ書き込みを実施
  */
-class DataLoggerWorker {
+class SignalLoggerWorker {
 public:
-    DataLoggerWorker();
-    ~DataLoggerWorker();
+    SignalLoggerWorker();
+    ~SignalLoggerWorker();
 
     /**
      * @brief ロギングの開始

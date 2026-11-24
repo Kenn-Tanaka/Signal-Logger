@@ -1,6 +1,6 @@
 [日本語](README.md)
 
-# Data-Logger Suite
+# Signal Logger
 
 An up to 8-channel signal logger for Windows. Using PC audio interfaces as the input front-end, it provides real-time waveform display, DLOG binary recording, waveform playback of recorded data, and CSV/TSV batch conversion.
 
@@ -21,8 +21,8 @@ An up to 8-channel signal logger for Windows. Using PC audio interfaces as the i
 
 | Component | Purpose |
 |---|---|
-| `DataLogger.exe` | Non-recording preview, up to 8ch recording, time-axis waveform display, data playback, upsampled WAV export |
-| `DlogToCsv.exe` | Multi-file DLOG to CSV/TSV conversion, range trimming, row splitting, partial file recovery |
+| `SignalLogger.exe` | Non-recording preview, up to 8ch recording, time-axis waveform display, data playback, upsampled WAV export |
+| `SlogToCsv.exe` | Multi-file DLOG to CSV/TSV conversion, range trimming, row splitting, partial file recovery |
 | `tools/read_dlog.py` | Header verification, 16-bit PCM WAV export (requires Python and NumPy) |
 
 - **Candidate Input Rates**: 32 / 44.1 / 48 / 88.2 / 96 / 192 kHz (dynamically filtered by querying PortAudio for supported device/channel formats)
@@ -63,7 +63,7 @@ Dependency definitions and commit SHAs are locked in `deps/dependencies.lock.jso
 ```
 (or `build.bat -Test`)
 
-- Executables are generated in the `build/` directory (`build/DataLogger.exe`, `build/DlogToCsv.exe`).
+- Executables are generated in the `build/` directory (`build/SignalLogger.exe`, `build/SlogToCsv.exe`).
 - CTest runs seven tests: three for logger core, CSV conversion, and WAV export, plus four bilingual startup smoke tests.
 - Real hardware audio capture tests are skipped by default. Specify `-HardwareTests -Test` when required.
 
@@ -77,8 +77,8 @@ Dependency definitions and commit SHAs are locked in `deps/dependencies.lock.jso
 - Static link verification (verifies no non-system DLL dependencies exist in PE headers)
 - Binary package contains EXEs, user docs, notices, and build provenance (excludes SPEC and internal developer guidelines)
 - Automatically generates `MANIFEST.txt` with locked dependency revisions and SHA-256 hashes
-- Generates `dist/DataLogger-v<Version>-win64.zip`
-- Source builder package `dist/DataLogger-v<Version>-builder.zip` contains source code, build scripts, and docs (excludes compiled binaries and dependencies)
+- Generates `dist/SignalLogger-v<Version>-win64.zip`
+- Source builder package `dist/SignalLogger-v<Version>-builder.zip` contains source code, build scripts, and docs (excludes compiled binaries and dependencies)
 - Prevents overwriting existing archives of the same version
 
 Builder ZIP verification can be run via `scripts/test-clean-build.ps1 -BuilderZip <PathToZip>`.

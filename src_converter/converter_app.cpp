@@ -4,6 +4,10 @@
 #include "common/localized_strings.h"
 
 #include <wx/cmdline.h>
+#ifdef __WXMSW__
+#include <wx/iconbndl.h>
+#include <windows.h>
+#endif
 
 namespace dlog {
 
@@ -42,6 +46,9 @@ bool ConverterApp::OnInit() {
         wxDefaultPosition,
         wxSize(920, 720)
     );
+#ifdef __WXMSW__
+    frame->SetIcons(wxIconBundle("APP_ICON", ::GetModuleHandleW(nullptr)));
+#endif
     SetTopWindow(frame);
     frame->Centre();
 
@@ -55,6 +62,13 @@ bool ConverterApp::OnInit() {
     if (m_smokeTest) {
         CallAfter([this, frame]() {
             m_smokeTestExitCode = 0;
+#ifdef __WXMSW__
+            const auto& icons = frame->GetIcons();
+            if (!icons.GetIconOfExactSize(16).IsOk() || !icons.GetIconOfExactSize(32).IsOk()
+                || !icons.GetIconOfExactSize(256).IsOk()) {
+                m_smokeTestExitCode = 1;
+            }
+#endif
             frame->Close(true);
         });
         return true;

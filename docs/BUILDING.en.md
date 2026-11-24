@@ -38,15 +38,15 @@ Does not recursively delete existing data or old dependency installs; maintenanc
 .\scripts\package.ps1 -Version 2.0.0
 ```
 
-- `DataLogger-v2.0.0-builder.zip`: For development and building. Contains SPEC and developer guidelines.
-- `DataLogger-v2.0.0-win64.zip`: Executables, user documentation, license notices, and build provenance. Excludes SPEC and developer guidelines.
+- `SignalLogger-v2.0.0-builder.zip`: For development and building. Contains SPEC and developer guidelines.
+- `SignalLogger-v2.0.0-win64.zip`: Executables, user documentation, license notices, and build provenance. Excludes SPEC and developer guidelines.
 
 Halts without overwriting if a ZIP with the same name already exists. Specify a different `-OutputDir` or version string to regenerate.
 
 ## Distribution Builder ZIP Clean Verification
 
 ```powershell
-.\scripts\test-clean-build.ps1 -BuilderZip .\dist\DataLogger-v2.0.0-builder.zip
+.\scripts\test-clean-build.ps1 -BuilderZip .\dist\SignalLogger-v2.0.0-builder.zip
 ```
 
 Extracts to a clean, isolated directory on each run, performing download, build, test, and binary packaging without an existing dependency cache.

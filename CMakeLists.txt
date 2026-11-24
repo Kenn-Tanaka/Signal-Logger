@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.26)
-project(DataLoggerSuite LANGUAGES C CXX)
+project(SignalLogger LANGUAGES C CXX)
+
+if(WIN32)
+    enable_language(RC)
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -134,7 +138,7 @@ set(EXPORT_SOURCES
 )
 
 # ========================================================
-# 1. データロガー本体 (DataLogger.exe)
+# 1. データロガー本体 (SignalLogger.exe)
 # ========================================================
 set(LOGGER_SOURCES
     ${COMMON_SOURCES}
@@ -150,8 +154,8 @@ set(LOGGER_SOURCES
     src/dsp/calibration_calculator.h
     src/dsp/calibration_calculator.cpp
     src/storage/power_manager.h
-    src/storage/data_logger_worker.h
-    src/storage/data_logger_worker.cpp
+    src/storage/signal_logger_worker.h
+    src/storage/signal_logger_worker.cpp
     src/ui/waveform_panel.h
     src/ui/waveform_panel.cpp
     src/ui/time_axis_calculator.h
@@ -171,14 +175,14 @@ set(LOGGER_SOURCES
     src/ui/main_frame.cpp
 )
 
-add_executable(DataLogger ${LOGGER_SOURCES})
-target_include_directories(DataLogger PRIVATE ${COMMON_INCLUDES})
-target_compile_definitions(DataLogger PRIVATE ${COMMON_DEFINITIONS})
-target_link_libraries(DataLogger PRIVATE PortAudio::PortAudio wxWidgets::wxWidgets ${SYSTEM_LIBS})
-target_link_options(DataLogger PRIVATE ${COMMON_LINK_OPTIONS})
+add_executable(SignalLogger ${LOGGER_SOURCES})
+target_include_directories(SignalLogger PRIVATE ${COMMON_INCLUDES})
+target_compile_definitions(SignalLogger PRIVATE ${COMMON_DEFINITIONS})
+target_link_libraries(SignalLogger PRIVATE PortAudio::PortAudio wxWidgets::wxWidgets ${SYSTEM_LIBS})
+target_link_options(SignalLogger PRIVATE ${COMMON_LINK_OPTIONS})
 
 # ========================================================
-# 2. DLOG to CSV バッチ変換ツール (DlogToCsv.exe)
+# 2. DLOG to CSV バッチ変換ツール (SlogToCsv.exe)
 # ========================================================
 set(CONVERTER_SOURCES
     ${COMMON_SOURCES}
@@ -196,11 +200,23 @@ set(CONVERTER_SOURCES
     src_converter/ui/converter_frame.cpp
 )
 
-add_executable(DlogToCsv ${CONVERTER_SOURCES})
-target_include_directories(DlogToCsv PRIVATE ${COMMON_INCLUDES})
-target_compile_definitions(DlogToCsv PRIVATE ${COMMON_DEFINITIONS})
-target_link_libraries(DlogToCsv PRIVATE wxWidgets::wxWidgets ${SYSTEM_LIBS})
-target_link_options(DlogToCsv PRIVATE ${COMMON_LINK_OPTIONS})
+add_executable(SlogToCsv ${CONVERTER_SOURCES})
+target_include_directories(SlogToCsv PRIVATE ${COMMON_INCLUDES})
+target_compile_definitions(SlogToCsv PRIVATE ${COMMON_DEFINITIONS})
+target_link_libraries(SlogToCsv PRIVATE wxWidgets::wxWidgets ${SYSTEM_LIBS})
+target_link_options(SlogToCsv PRIVATE ${COMMON_LINK_OPTIONS})
+
+if(WIN32)
+    set(APP_ICON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/resources")
+    target_sources(SignalLogger PRIVATE "${APP_ICON_DIR}/signal_logger.rc")
+    target_sources(SlogToCsv PRIVATE "${APP_ICON_DIR}/slog_to_csv.rc")
+    target_include_directories(SignalLogger PRIVATE "${APP_ICON_DIR}")
+    target_include_directories(SlogToCsv PRIVATE "${APP_ICON_DIR}")
+    set_property(SOURCE "${APP_ICON_DIR}/signal_logger.rc" APPEND PROPERTY
+        OBJECT_DEPENDS "${APP_ICON_DIR}/signal_logger.ico")
+    set_property(SOURCE "${APP_ICON_DIR}/slog_to_csv.rc" APPEND PROPERTY
+        OBJECT_DEPENDS "${APP_ICON_DIR}/slog_to_csv.ico")
+endif()
 
 # ========================================================
 # 3. テストターゲット (CTest 統合)
@@ -214,7 +230,7 @@ set(TEST_DLOG_SOURCES
     src/audio/audio_device_mgr.cpp
     src/dsp/decimator_processor.cpp
     src/dsp/calibration_calculator.cpp
-    src/storage/data_logger_worker.cpp
+    src/storage/signal_logger_worker.cpp
     src/ui/time_axis_calculator.cpp
     src/playback/playback_time_parser.cpp
     src/playback/playback_loader_worker.cpp
@@ -242,7 +258,7 @@ target_link_options(test_dlog PRIVATE
     -static-libstdc++
 )
 
-add_test(NAME TestDataLogger COMMAND $<TARGET_FILE:test_dlog>)
+add_test(NAME TestSignalLogger COMMAND $<TARGET_FILE:test_dlog>)
 option(DLOG_ENABLE_HARDWARE_TESTS "Enable tests that capture live audio (opt-in)" OFF)
 if(DLOG_ENABLE_HARDWARE_TESTS)
     add_test(NAME TestAudioHardware COMMAND $<TARGET_FILE:test_dlog> --hardware-only)
@@ -302,15 +318,15 @@ target_link_options(test_wav_export PRIVATE
 
 add_test(NAME TestWavExport COMMAND $<TARGET_FILE:test_wav_export>)
 
-# 3.3 GUI 起動・初期化スモークテスト (DataLogger / DlogToCsv × 日本語 / 英語)
-add_test(NAME TestDataLoggerSmokeJa COMMAND $<TARGET_FILE:DataLogger> --smoke-test --language=ja)
-set_tests_properties(TestDataLoggerSmokeJa PROPERTIES TIMEOUT 15)
+# 3.3 GUI 起動・初期化スモークテスト (SignalLogger / SlogToCsv × 日本語 / 英語)
+add_test(NAME TestSignalLoggerSmokeJa COMMAND $<TARGET_FILE:SignalLogger> --smoke-test --language=ja)
+set_tests_properties(TestSignalLoggerSmokeJa PROPERTIES TIMEOUT 15)
 
-add_test(NAME TestDataLoggerSmokeEn COMMAND $<TARGET_FILE:DataLogger> --smoke-test --language=en)
-set_tests_properties(TestDataLoggerSmokeEn PROPERTIES TIMEOUT 15)
+add_test(NAME TestSignalLoggerSmokeEn COMMAND $<TARGET_FILE:SignalLogger> --smoke-test --language=en)
+set_tests_properties(TestSignalLoggerSmokeEn PROPERTIES TIMEOUT 15)
 
-add_test(NAME TestDlogToCsvSmokeJa COMMAND $<TARGET_FILE:DlogToCsv> --smoke-test --language=ja)
-set_tests_properties(TestDlogToCsvSmokeJa PROPERTIES TIMEOUT 15)
+add_test(NAME TestSlogToCsvSmokeJa COMMAND $<TARGET_FILE:SlogToCsv> --smoke-test --language=ja)
+set_tests_properties(TestSlogToCsvSmokeJa PROPERTIES TIMEOUT 15)
 
-add_test(NAME TestDlogToCsvSmokeEn COMMAND $<TARGET_FILE:DlogToCsv> --smoke-test --language=en)
-set_tests_properties(TestDlogToCsvSmokeEn PROPERTIES TIMEOUT 15)
+add_test(NAME TestSlogToCsvSmokeEn COMMAND $<TARGET_FILE:SlogToCsv> --smoke-test --language=en)
+set_tests_properties(TestSlogToCsvSmokeEn PROPERTIES TIMEOUT 15)

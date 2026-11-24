@@ -39,15 +39,15 @@ Builder ZIPはプロジェクトのソース、テスト、固定依存定義、
 .\scripts\package.ps1 -Version 2.0.0
 ```
 
-- `DataLogger-v2.0.0-builder.zip`：開発・ビルド用。SPECと開発規約を含む
-- `DataLogger-v2.0.0-win64.zip`：EXE、利用者文書、ライセンス通知、来歴のみ。SPECと開発規約は含まない
+- `SignalLogger-v2.0.0-builder.zip`：開発・ビルド用。SPECと開発規約を含む
+- `SignalLogger-v2.0.0-win64.zip`：EXE、利用者文書、ライセンス通知、来歴のみ。SPECと開発規約は含まない
 
 同名ZIPは上書きせず停止します。再生成時は別の `-OutputDir` または版番号を指定してください。
 
 ## 配布Builder ZIPのクリーン検証
 
 ```powershell
-.\scripts\test-clean-build.ps1 -BuilderZip .\dist\DataLogger-v2.0.0-builder.zip
+.\scripts\test-clean-build.ps1 -BuilderZip .\dist\SignalLogger-v2.0.0-builder.zip
 ```
 
 毎回新規ディレクトリへ展開し、依存キャッシュなしで取得・ビルド・テスト・バイナリ配布生成まで実行します。

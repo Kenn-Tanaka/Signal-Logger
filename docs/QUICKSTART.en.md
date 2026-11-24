@@ -2,14 +2,14 @@
 
 # Quickstart Guide
 
-Target Audience: First-time users of Data-Logger Suite. For detailed instructions, refer to the [Reference Manual](REFERENCE_MANUAL.en.md). For operating requirements, see [README](../README.en.md).
+Target Audience: First-time users of Signal Logger. For detailed instructions, refer to the [Reference Manual](REFERENCE_MANUAL.en.md). For operating requirements, see [README](../README.en.md).
 
 ## 1. Preparation
 
 1. Ensure your audio interface is recognized by Windows and appropriate drivers are installed.
 2. Connect signals that remain within the input voltage limits of your hardware. Setting a full-scale voltage does not prevent hardware overvoltage.
 3. Verify sufficient free disk space on the target drive. First test with non-critical signals for a short duration.
-4. Launch `DataLogger.exe`.
+4. Launch `SignalLogger.exe`.
 
 Note: With AC-coupled audio interfaces, DC components are blocked. Choosing a lower recording rate does not enable DC measurement on AC-coupled hardware.
 
@@ -47,7 +47,7 @@ If rendering feels delayed over long files, pause playback and choose a shorter 
 
 ## 5. Converting to CSV / TSV
 
-1. Launch `DlogToCsv.exe`.
+1. Launch `SlogToCsv.exe`.
 2. Click "Add Files..." or drag and drop DLOG files into the list.
 3. Choose the output directory, timestamp format, channels, delimiter, and float precision.
 4. If needed, configure time range trimming and row splitting (e.g. 1,000,000 data rows for Excel limits).
@@ -59,7 +59,7 @@ Re-running conversion overwrites existing output files. Move existing CSVs if yo
 ## 6. Recovering from Unexpected Terminations
 
 1. Ensure the recording process has fully exited, and make a backup copy of the `.partial` file.
-2. In `DlogToCsv.exe`, click "Recover Partial File..." and select the incomplete file.
+2. In `SlogToCsv.exe`, click "Recover Partial File..." and select the incomplete file.
 3. Once the recovered file appears in the list, verify its duration, waveform, and channel metadata.
 4. Do not delete the original `.partial` file until verification is complete.
 

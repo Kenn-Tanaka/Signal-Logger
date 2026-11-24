@@ -1,11 +1,11 @@
 [日本語](README.md)
 
-# Data-Logger Suite — Windows Binary Release
+# Signal Logger — Windows Binary Release
 
 An up to 8-channel signal logger for Windows 10 / 11 (64-bit).
 
-- `DataLogger.exe`: Non-recording preview, DLOG recording, scaled waveform playback, and WAV export
-- `DlogToCsv.exe`: CSV/TSV batch conversion, time range trimming, line splitting, and stopped partial file recovery
+- `SignalLogger.exe`: Non-recording preview, DLOG recording, scaled waveform playback, and WAV export
+- `SlogToCsv.exe`: CSV/TSV batch conversion, time range trimming, line splitting, and stopped partial file recovery
 
 For installation and operation, refer to the [Quickstart Guide](docs/QUICKSTART.en.md) and [Reference Manual](docs/REFERENCE_MANUAL.en.md).
 For licensing terms, see [LICENSE](LICENSE) and [Third-Party Notices](LICENSES.md); license texts are located in `licenses/`.

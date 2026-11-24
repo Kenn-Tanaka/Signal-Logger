@@ -4,7 +4,7 @@ param([Parameter(Mandatory=$true)][string]$BuilderZip, [string]$WorkParent=$env:
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $zip = (Resolve-Path -LiteralPath $BuilderZip).Path
-$run = Join-Path ([IO.Path]::GetFullPath($WorkParent)) ('dlog-clean-' + [guid]::NewGuid().ToString('N'))
+$run = Join-Path ([IO.Path]::GetFullPath($WorkParent)) ('signal-logger-clean-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $run | Out-Null
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [IO.Compression.ZipFile]::OpenRead($zip)

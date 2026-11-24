@@ -2,7 +2,7 @@
 
 #include "audio/audio_types.h"
 #include "dsp/decimator_processor.h"
-#include "storage/data_logger_worker.h"
+#include "storage/signal_logger_worker.h"
 #include "readerwriterqueue.h"
 
 #include <portaudio.h>
@@ -47,7 +47,7 @@ public:
     /**
      * @brief オーディオストリームを開き、ロギングの準備
      */
-    bool OpenStream(const LoggerConfig& config, std::shared_ptr<DataLoggerWorker> loggerWorker = nullptr);
+    bool OpenStream(const LoggerConfig& config, std::shared_ptr<SignalLoggerWorker> loggerWorker = nullptr);
 
     /**
      * @brief 録音・ストリームの開始
@@ -100,7 +100,7 @@ private:
 
     PaStream* m_paStream = nullptr;
     LoggerConfig m_config;
-    std::shared_ptr<DataLoggerWorker> m_loggerWorker;
+    std::shared_ptr<SignalLoggerWorker> m_loggerWorker;
 
     std::atomic<bool> m_isStreaming{false};
     std::atomic<bool> m_stopRequested{false};

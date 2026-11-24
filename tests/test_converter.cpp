@@ -1404,7 +1404,7 @@ int main() {
     std::filesystem::path isolatedSettings = std::filesystem::temp_directory_path() / "converter_test_isolated_settings.ini";
     LanguagePreferences::SetCustomSettingsPathForTesting(isolatedSettings.u8string());
 
-    std::cout << "=== Running DlogToCsv Unit & Integration Tests ===" << std::endl;
+    std::cout << "=== Running SlogToCsv Unit & Integration Tests ===" << std::endl;
     TestReaderAndInspection();
     TestAutoSplitting();
     TestBatchWorker();

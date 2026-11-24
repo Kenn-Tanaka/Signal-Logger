@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "version": "1.0.0",
-  "generator": "Data-Logger Dependency Builder",
+  "generator": "Signal Logger Dependency Builder",
   "target": {
     "os": "windows",
     "arch": "x86_64",

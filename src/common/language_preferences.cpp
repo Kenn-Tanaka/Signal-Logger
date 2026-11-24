@@ -81,7 +81,7 @@ std::string LanguagePreferences::GetSettingsFilePath() {
     wchar_t localAppData[MAX_PATH * 2];
     DWORD len = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, static_cast<DWORD>(sizeof(localAppData) / sizeof(localAppData[0])));
     if (len > 0 && len < (sizeof(localAppData) / sizeof(localAppData[0]))) {
-        std::filesystem::path dir = std::filesystem::path(localAppData) / "DataLoggerSuite";
+        std::filesystem::path dir = std::filesystem::path(localAppData) / "SignalLogger";
         std::error_code ec;
         std::filesystem::create_directories(dir, ec);
         return (dir / "settings.ini").u8string();
@@ -93,8 +93,18 @@ std::string LanguagePreferences::GetSettingsFilePath() {
 }
 
 bool LanguagePreferences::LoadFromDisk(Language& outLang, const std::string& filePath) {
-    const std::string path = filePath.empty() ? GetSettingsFilePath() : filePath;
-    std::ifstream in(std::filesystem::u8path(path));
+    const auto path = std::filesystem::u8path(filePath.empty() ? GetSettingsFilePath() : filePath);
+    std::ifstream in(path);
+#ifdef _WIN32
+    // Read the old per-user language preference until the new path has been saved.
+    if (!in.is_open() && filePath.empty() && s_customSettingsPath.empty() && path.has_parent_path()) {
+        std::error_code ec;
+        if (!std::filesystem::exists(path, ec) && !ec) {
+            const auto legacyPath = path.parent_path().parent_path() / "DataLoggerSuite" / path.filename();
+            in.open(legacyPath);
+        }
+    }
+#endif
     if (!in.is_open()) {
         return false;
     }

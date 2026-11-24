@@ -10,9 +10,14 @@ foreach ($file in $files) {
     if ($Kind -eq 'Binary' -and ($rel -match '(^|/)(SPEC|AGENTS)(\.[a-z]+)?\.md$' -or $file.Extension -in @('.cpp','.ps1'))) { throw 'Developer content in binary package.' }
 }
 $required = if ($Kind -eq 'Binary') {
-    @('DataLogger.exe','DlogToCsv.exe','README.md','README.en.md','LICENSE','LICENSES.md','docs/QUICKSTART.md',
+    @('SignalLogger.exe','SlogToCsv.exe','README.md','README.en.md','LICENSE','LICENSES.md','docs/QUICKSTART.md',
       'docs/QUICKSTART.en.md','docs/REFERENCE_MANUAL.md','docs/REFERENCE_MANUAL.en.md','build_provenance.json',
       'licenses/runtime/gcc-runtime.txt','licenses/runtime/mingw-runtime.txt')
-} else { @('build.ps1','CMakeLists.txt','README.en.md','SPEC.en.md','docs/BUILDING.md','docs/BUILDING.en.md','deps/dependencies.lock.json','src/main.cpp','src_converter/main_converter.cpp') }
+} else {
+    @('build.ps1','CMakeLists.txt','README.en.md','SPEC.en.md','docs/BUILDING.md','docs/BUILDING.en.md',
+      'deps/dependencies.lock.json','src/main.cpp','src_converter/main_converter.cpp',
+      'src/resources/signal_logger.rc','src/resources/signal_logger.ico',
+      'src/resources/slog_to_csv.rc','src/resources/slog_to_csv.ico')
+}
 foreach ($rel in $required) { if (!(Test-Path -LiteralPath (Join-Path $base $rel))) { throw "Missing required file: $rel" } }
 Write-Host "$Kind package audit passed ($($files.Count) files)."

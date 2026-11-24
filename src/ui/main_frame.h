@@ -2,7 +2,7 @@
 
 #include "audio/audio_types.h"
 #include "audio/audio_device_mgr.h"
-#include "storage/data_logger_worker.h"
+#include "storage/signal_logger_worker.h"
 #include "ui/waveform_panel.h"
 #include "playback/playback_loader_worker.h"
 #include "export/wav_export_types.h"
@@ -110,7 +110,7 @@ private:
 
     // コアマネージャ
     std::unique_ptr<AudioDeviceManager> m_audioMgr;
-    std::shared_ptr<DataLoggerWorker> m_loggerWorker;
+    std::shared_ptr<SignalLoggerWorker> m_loggerWorker;
 
     std::vector<DeviceInfo> m_devices;
     std::vector<int> m_availableChannels;

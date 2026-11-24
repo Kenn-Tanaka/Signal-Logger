@@ -1,8 +1,8 @@
 [日本語](SPEC.md)
 
-# Implementation Specification
+# Signal Logger Implementation Specification
 
-Date of Reference: 2026-10-14. Target: Current C++ codebase, CMake configuration, and Python auxiliary tools.
+Date of Reference: 2026-11-24. Target: Current C++ codebase, CMake configuration, and Python auxiliary tools.
 
 ## Purpose and Scope
 
@@ -20,7 +20,7 @@ Core Requirement: Prioritize zero dropouts, and display cumulative detected reco
 | `src/ui/time_axis_calculator.*` | Time window and division/scale calculations |
 | `src/audio/audio_device_mgr.*` | PortAudio enumeration, format querying, stream lifecycle, Raw/UI SPSC queues |
 | `src/dsp/decimator_processor.*` | Integer ratio decimation, FIR and moving average anti-aliasing |
-| `src/storage/data_logger_worker.*` | Disk write queue, DLOG binary I/O, atomic commit and recovery tracking |
+| `src/storage/signal_logger_worker.*` | Disk write queue, DLOG binary I/O, atomic commit and recovery tracking |
 | `src/storage/power_manager.h` | Windows thread execution power management (sleep suppression) |
 | `src/playback/*` | Time parsing, window requests, background chunk loading |
 | `src_converter/*` | DLOG header validation, partial file recovery, conversion planning, CSV export, batch GUI |
@@ -176,9 +176,9 @@ Exports the verified DLOG file currently open in the "Recorded Waveform Playback
 
 ## Internationalization (Bilingual UI)
 
-Both `DataLogger.exe` and `DlogToCsv.exe` support hot-switching between Japanese and English via the top menu bar (`言語 / Language` -> `● 日本語`, `○ English`).
+Both `SignalLogger.exe` and `SlogToCsv.exe` support hot-switching between Japanese and English via the top menu bar (`言語 / Language` -> `● 日本語`, `○ English`).
 - Switching language does not restart streams, reset buffers, or disrupt ongoing recording or conversions.
-- User preference is saved atomically to `%LOCALAPPDATA%\DataLoggerSuite\settings.ini` (`schema_version=1`, `language=ja|en`).
+- User preference is saved atomically to `%LOCALAPPDATA%\SignalLogger\settings.ini` (`schema_version=1`, `language=ja|en`). If the new file does not exist yet, both apps read the legacy language preference.
 - CLI option `--language=ja|en` overrides the UI language for the current session without writing to disk.
 - Fallback logic checks Windows user default UI language (`ja` -> Japanese, else English).
 - CSV output data, numbers, timestamps, and DLOG binary streams are 100% bitwise identical regardless of selected UI language. However, two independent physical measurement sessions on live hardware will have physical clock and scheduling jitter, and bitwise identity across separate recording runs is not guaranteed.
@@ -188,7 +188,7 @@ Both `DataLogger.exe` and `DlogToCsv.exe` support hot-switching between Japanese
 
 ## Verification and Change Management
 
-CTest registers `TestDataLogger`, `TestConverter`, `TestWavExport`, and bilingual startup smoke tests for both applications (`TestDataLoggerSmokeJa`, `TestDataLoggerSmokeEn`, `TestDlogToCsvSmokeJa`, `TestDlogToCsvSmokeEn`). Live audio capture tests are disabled by default (`DLOG_ENABLE_HARDWARE_TESTS=ON`, or `build.ps1 -HardwareTests`).
+CTest registers `TestSignalLogger`, `TestConverter`, `TestWavExport`, and bilingual startup smoke tests for both applications (`TestSignalLoggerSmokeJa`, `TestSignalLoggerSmokeEn`, `TestSlogToCsvSmokeJa`, `TestSlogToCsvSmokeEn`). Live audio capture tests are disabled by default (`DLOG_ENABLE_HARDWARE_TESTS=ON`, or `build.ps1 -HardwareTests`).
 
 Binary packages contain executables, user guides, license notices, and provenance metadata (SPEC and developer guidelines are excluded from binary ZIP distributions). Source builder packages contain source code, dependency specifications, and developer documentation.
 

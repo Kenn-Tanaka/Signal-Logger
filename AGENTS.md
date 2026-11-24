@@ -1,4 +1,4 @@
-# AGENTS.md - Data-Logger Project Guidelines & Architecture Specification
+# AGENTS.md - Signal Logger Project Guidelines & Architecture Specification
 
 ## 1. プロジェクト概要 (Project Overview)
 本プロジェクトは、PC用ディジタルオーディオインターフェース（A/Dコンバータ）をハードウェアフロントエンドとし、最大8チャネルのアナログ信号を長期間連続してデジタル記録・リアルタイム描画するデスクトップアプリケーション（C++ / wxWidgets）です。
@@ -85,7 +85,7 @@
 
 ```text
 Offset  Type      Field Name          Description
-0x00    char[4]   magic               "DLOG" (Data Logger Magic)
+0x00    char[4]   magic               "DLOG" (file format magic)
 0x04    uint32_t  version             フォーマットバージョン (2)
 0x08    uint32_t  header_size         ヘッダ全体のサイズ (64 bytes)
 0x0C    uint32_t  channels            チャネル数 (例: 2, 4, 8)
@@ -107,7 +107,7 @@ Offset  Type      Field Name          Description
 ## 5. モジュール構成とディレクトリ構造 (Directory Structure)
 
 ```text
-2026-10-09_Data-Logger/
+Signal-Logger/
 ├── LICENSE                    # プロジェクトライセンス (MIT)
 ├── LICENSES.md                # 第三者ライセンス通知・固定revision定義
 ├── README.md                  # プロジェクト概要・ビルド手順
@@ -124,7 +124,7 @@ Offset  Type      Field Name          Description
 ├── docs/                      # ユーザー向けドキュメント
 │   ├── QUICKSTART.md          # クイックスタートガイド
 │   └── REFERENCE_MANUAL.md    # リファレンスマニュアル
-├── src/                       # データロガー本体 (DataLogger.exe)
+├── src/                       # データロガー本体 (SignalLogger.exe)
 │   ├── main.cpp               # wxWidgets エントリーポイント
 │   ├── app.h / app.cpp        # wxApp 実装
 │   ├── common/                # 日英ローカライズ・言語設定永続化
@@ -134,7 +134,7 @@ Offset  Type      Field Name          Description
 │   ├── storage/               # ディスク非同期I/O・ファイル出力・電源制御
 │   ├── playback/              # DLOG波形再生バックグラウンド読込
 │   └── export/                # WAV/RF64 エクスポート・アップサンプリング補間
-├── src_converter/             # DLOG to CSV バッチ変換ツール (DlogToCsv.exe)
+├── src_converter/             # DLOG to CSV バッチ変換ツール (SlogToCsv.exe)
 │   ├── main_converter.cpp     # エントリーポイント
 │   ├── converter_app.h / .cpp # wxApp 実装
 │   ├── converter_types.h      # 変換オプション・バッチ定義

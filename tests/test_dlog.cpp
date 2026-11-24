@@ -12,7 +12,7 @@
 #include "audio/audio_types.h"
 #include "dsp/decimator_processor.h"
 #include "dsp/calibration_calculator.h"
-#include "storage/data_logger_worker.h"
+#include "storage/signal_logger_worker.h"
 #include "audio/audio_device_mgr.h"
 #include "ui/time_axis_calculator.h"
 #include "playback/playback_time_parser.h"
@@ -77,10 +77,10 @@ void TestDecimatorProcessor() {
     std::cout << "  -> Decimation 44.1kHz -> 22.05kHz (4ch, 512 -> 256 frames). PASS!" << std::endl;
 }
 
-void TestDataLoggerWorker() {
-    std::cout << "[Test 3] Testing DataLoggerWorker (Binary logging & stats)..." << std::endl;
+void TestSignalLoggerWorker() {
+    std::cout << "[Test 3] Testing SignalLoggerWorker (Binary logging & stats)..." << std::endl;
 
-    DataLoggerWorker worker;
+    SignalLoggerWorker worker;
     LoggerConfig config;
     config.channels = 2;
     config.nativeSampleRate = 44100.0;
@@ -160,9 +160,9 @@ void TestAudioDeviceManagerEnumeration() {
     std::cout << "  -> Device enumeration test PASS!" << std::endl;
 }
 
-void TestDataLoggerJapanesePathAndError() {
-    std::cout << "[Test 5] Testing DataLoggerWorker with Japanese path..." << std::endl;
-    DataLoggerWorker worker;
+void TestSignalLoggerJapanesePathAndError() {
+    std::cout << "[Test 5] Testing SignalLoggerWorker with Japanese path..." << std::endl;
+    SignalLoggerWorker worker;
     LoggerConfig config;
     config.channels = 2;
     config.nativeSampleRate = 44100.0;
@@ -244,8 +244,8 @@ void TestDecimation1HzAndVoltageHeader() {
     assert(std::fabs(outBlock.samples[0] - 0.50f) < 1e-4f);
     assert(std::fabs(outBlock.samples[1] - (-0.25f)) < 1e-4f);
 
-    // 2. DataLoggerWorker の fullScaleVoltage ヘッダ記録検証
-    DataLoggerWorker worker;
+    // 2. SignalLoggerWorker の fullScaleVoltage ヘッダ記録検証
+    SignalLoggerWorker worker;
     LoggerConfig config;
     config.channels = 2;
     config.nativeSampleRate = 44100.0;
@@ -399,7 +399,7 @@ void TestTransactionalOutputAndValidation() {
     config.outputFilePath = outputPath.u8string();
 
     {
-        DataLoggerWorker worker;
+        SignalLoggerWorker worker;
         assert(worker.Start(config));
         const std::filesystem::path activePartial = std::filesystem::u8path(worker.GetRecoveryFilePath());
         assert(std::filesystem::exists(activePartial));
@@ -418,7 +418,7 @@ void TestTransactionalOutputAndValidation() {
     }
 
     {
-        DataLoggerWorker worker;
+        SignalLoggerWorker worker;
         assert(worker.Start(config));
         worker.Stop();
         assert(!worker.HasDiskError());
@@ -434,7 +434,7 @@ void TestTransactionalOutputAndValidation() {
     }
 
     {
-        DataLoggerWorker worker;
+        SignalLoggerWorker worker;
         LoggerConfig invalid = config;
         invalid.channels = 9;
         invalid.outputFilePath = "invalid_9ch.bin";
@@ -471,7 +471,7 @@ void TestInvalidAudioBlockRejection() {
     assert(output.channels == 8);
     assert(output.frameCount == 0);
 
-    DataLoggerWorker worker;
+    SignalLoggerWorker worker;
     LoggerConfig config;
     config.channels = 2;
     config.outputFilePath = "invalid_block.bin";
@@ -560,8 +560,8 @@ void TestDecimation32kHzTo1000HzAndHeader() {
         }
     }
 
-    // 2. DataLoggerWorker での 32 kHz 記録とヘッダ検証
-    DataLoggerWorker worker;
+    // 2. SignalLoggerWorker での 32 kHz 記録とヘッダ検証
+    SignalLoggerWorker worker;
     LoggerConfig config;
     config.channels = channels;
     config.nativeSampleRate = 32000.0;
@@ -791,7 +791,7 @@ void TestPreviewModeAndTransitions() {
         mgr.StopStream();
         assert(!mgr.IsStreaming());
 
-        auto loggerWorker = std::make_shared<DataLoggerWorker>();
+        auto loggerWorker = std::make_shared<SignalLoggerWorker>();
         assert(loggerWorker->Start(config));
         assert(mgr.OpenStream(config, loggerWorker));
         assert(mgr.StartStream());
@@ -853,7 +853,7 @@ void TestPreviewModeAndTransitions() {
         }
         LoggerConfig invalidConfig = config;
         invalidConfig.outputFilePath = (dummyFile / "sub_dir" / "invalid.bin").u8string();
-        auto failWorker = std::make_shared<DataLoggerWorker>();
+        auto failWorker = std::make_shared<SignalLoggerWorker>();
         bool failStart = failWorker->Start(invalidConfig);
         std::filesystem::remove(dummyFile, ec);
         assert(!failStart); // 保存ファイル作成に失敗
@@ -1261,7 +1261,7 @@ void TestPlaybackEpochIsolationAndDurationRetention() {
 
     // 1. Worker post-stop duration retention (UI-002)
     {
-        DataLoggerWorker worker;
+        SignalLoggerWorker worker;
         LoggerConfig config;
         config.channels = 2;
         config.nativeSampleRate = 1000.0;
@@ -1963,7 +1963,7 @@ void TestMarkCaptureStartedNowAndPostRecordState() {
     cfg.sampleFormat = SampleFormatType::Float32;
     cfg.outputFilePath = tempPath.u8string();
 
-    DataLoggerWorker worker;
+    SignalLoggerWorker worker;
     assert(worker.Start(cfg));
     DLogFileHeader initialHeader = worker.GetWrittenHeader();
 
@@ -2023,12 +2023,12 @@ int main(int argc, char** argv) {
     std::filesystem::path isolatedSettings = std::filesystem::temp_directory_path() / "dlog_test_isolated_settings.ini";
     LanguagePreferences::SetCustomSettingsPathForTesting(isolatedSettings.u8string());
 
-    std::cout << "=== Running Data-Logger Unit & System Tests ===" << std::endl;
+    std::cout << "=== Running Signal Logger Unit & System Tests ===" << std::endl;
     TestHeaderSpecification();
     TestDecimatorProcessor();
-    TestDataLoggerWorker();
+    TestSignalLoggerWorker();
     TestAudioDeviceManagerEnumeration();
-    TestDataLoggerJapanesePathAndError();
+    TestSignalLoggerJapanesePathAndError();
     TestAudioDeviceManagerErrorTracking();
     TestDecimation1HzAndVoltageHeader();
     TestChannelMetadataConfig();

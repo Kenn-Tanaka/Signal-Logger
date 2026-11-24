@@ -16,7 +16,6 @@
 | wxWidgets 3.2.5 | GUI。wxWindows Library Licence（LGPL本文＋例外） | `licenses/wxWidgets/` |
 | PortAudio v19.8-preview | MME/WASAPI入力。MIT形式 | `licenses/portaudio/` |
 | ReaderWriterQueue 1.0.6 | SPSCキュー。Simplified BSD、追加ヘッダ通知 | `licenses/readerwriterqueue/` |
-| ConcurrentQueue 1.0.4 | 現在未使用。取得セットに含む。BSD／Boost等 | `licenses/concurrentqueue/` |
 | libpng、IJG JPEG、libtiff、zlib、PCRE2、NanoSVG | wxWidgetsの固定submodule。各許諾条件による | `licenses/wxWidgets/` |
 | GCC 13.2.0 libgcc／libstdc++ | GPLv3＋GCC Runtime Library Exception 3.1 | `licenses/runtime/gcc-gpl3.txt`、`gcc-runtime.txt` |
 | MinGW-w64 11.0.1、winpthreads | 複数の許諾・著作権表示。個別原文参照 | `licenses/runtime/mingw-runtime.txt`、`winpthreads.txt` |

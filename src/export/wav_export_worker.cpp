@@ -5,6 +5,10 @@
 
 namespace dlog {
 
+namespace {
+struct ExportCanceled {};
+}
+
 WavExportWorker::WavExportWorker() = default;
 
 WavExportWorker::~WavExportWorker() {
@@ -37,7 +41,15 @@ bool WavExportWorker::Start(const WavExportOptions& options,
     }
 
     m_isRunning.store(true);
-    m_thread = std::make_unique<std::thread>(&WavExportWorker::WorkerThread, this);
+    try {
+        m_thread = std::make_unique<std::thread>(&WavExportWorker::WorkerThread, this);
+    } catch (const std::exception& ex) {
+        m_isRunning.store(false);
+        std::lock_guard<std::mutex> lock(m_resultMutex);
+        m_error = MakeError(StringId::ErrWavStartFailed);
+        m_error.rawDetail = ex.what();
+        return false;
+    }
     return true;
 }
 
@@ -118,7 +130,10 @@ void WavExportWorker::WorkerThread() {
 
         // 5. 補間器の初期化
         Interpolator interpolator;
-        interpolator.Initialize(est.channelCount, est.interpolationFactor, m_options.interpolationMethod);
+        if (!interpolator.Initialize(est.channelCount, est.interpolationFactor, m_options.interpolationMethod,
+                                     [this] { return m_cancelRequested.load(); })) {
+            throw ExportCanceled{};
+        }
         int preMargin = interpolator.GetPreMargin();
         int postMargin = interpolator.GetPostMargin();
 
@@ -174,7 +189,7 @@ void WavExportWorker::WorkerThread() {
                 size_t framesRead = 0;
                 if (!reader.ReadFrames(static_cast<uint64_t>(validFileStart), validFileFrames, rawFileBuf, framesRead) || framesRead != validFileFrames) {
                     localError = reader.GetLastErrorInfo();
-                    streamError = "Failed to read samples from DLOG file: " + reader.GetLastError();
+                    streamError = "Failed to read the expected number of samples from the DLOG file.";
                     break;
                 }
             }
@@ -263,6 +278,8 @@ void WavExportWorker::WorkerThread() {
             }
         }
 
+    } catch (const ExportCanceled&) {
+        localResult.canceled = true;
     } catch (const std::exception& ex) {
         localResult.success = false;
         if (!localError.HasError()) {

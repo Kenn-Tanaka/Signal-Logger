@@ -23,7 +23,8 @@ public:
      * @param factor アップサンプリング間引き倍率 N (>= 1)
      * @param method 補間方式
      */
-    void Initialize(int channels, uint32_t factor, InterpolationMethod method);
+    bool Initialize(int channels, uint32_t factor, InterpolationMethod method,
+                    const std::function<bool()>& isCanceled = {});
 
     /**
      * @brief 補間に必要な前マージン (過去サンプル数)
@@ -71,7 +72,7 @@ public:
     void InterpolateSingleFrame(const float* inputWithMargins, float* outSamples);
 
 private:
-    void PrecomputeFirTaps();
+    bool PrecomputeFirTaps(const std::function<bool()>& isCanceled);
 
     int m_channels = 1;
     uint32_t m_factor = 1;

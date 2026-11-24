@@ -110,7 +110,7 @@ name=Signal2
 unit=V
 ```
 
-`DlogReader` validates magic, version, channel count, native rate, decimation factor, and timestamp against the binary header, safely falling back to defaults (`CH1`, `V`) if inconsistencies are detected.
+For an accompanying DLOG v2 sidecar, `DlogReader` requires magic, version, channel count, native rate, decimation factor, full-scale voltage, and timestamp, and checks them against the binary header. An unreadable or inconsistent sidecar triggers a warning in playback and CSV conversion, and the application uses default labels and units (`CH1`, `V`). An absent sidecar uses the defaults without a warning.
 
 ### Temporary File Management & Recovery
 
@@ -161,7 +161,7 @@ Exports the verified DLOG file currently open in the "Recorded Waveform Playback
 - Multi-channel WAV ($\ge 3$ channels) utilizes `WAVEFORMATEXTENSIBLE` with `dwChannelMask = 0` (unspecified / direct output) to prevent arbitrary surround speaker mapping.
 
 ### Formats and Word Length
-- **IEEE 32-bit Float [Default]**: Normalized floating-point values in $[-1.0, +1.0]$.
+- **IEEE 32-bit Float [Default]**: Float samples use $[-1.0, +1.0]$ as the nominal range. Non-finite values are rejected and finite values outside this range are preserved.
 - **16-bit Signed PCM**: Maps $[-1.0, +1.0] \to [-32768, +32767]$. Rejects non-finite values (NaN/Inf) as errors. Clips out-of-range samples and reports clipped sample counts upon completion.
 
 ### 4 GiB Size Boundary and RF64
@@ -172,7 +172,7 @@ Exports the verified DLOG file currently open in the "Recorded Waveform Playback
 ### Safety and Isolation
 - Writes streaming chunks to a temporary file (`.~*.tmp`) in the destination directory and performs atomic replacement upon completion.
 - Cleans up temporary files safely upon error or user cancellation, preserving existing destination files.
-- Operates on a dedicated worker thread with an isolated `DlogReader` instance, leaving GUI playback and seeking positions unaffected.
+- Uses a dedicated worker thread and an isolated `DlogReader`. Playback pauses and progress appears in the playback tab. The language menu and cancel action remain available.
 
 ## Internationalization (Bilingual UI)
 

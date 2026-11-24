@@ -21,6 +21,29 @@
 
 namespace dlog {
 
+namespace {
+wxString FormatBatchStatus(const BatchItem& item) {
+    wxString status;
+    switch (item.status) {
+        case BatchStatus::Pending: status = TrWx(StringId::StatusPending); break;
+        case BatchStatus::Converting:
+            status = TrFormatWx(StringId::StatusConvertingProgressFormat,
+                                std::to_string(static_cast<int>(item.progress * 100.0)));
+            break;
+        case BatchStatus::Completed:
+            status = TrFormatWx(StringId::StatusCompletedFormat, std::to_string(item.outputFiles.size()));
+            break;
+        case BatchStatus::Canceled: status = TrWx(StringId::StatusCanceled); break;
+        case BatchStatus::Error:
+            status = item.error.HasError() ? wxString::FromUTF8(item.error.FormatCurrent().c_str())
+                                           : TrWx(StringId::StatusError);
+            break;
+    }
+    if (item.hasMetaWarning) return TrWx(StringId::WarnMetadataFallbackShort) + " / " + status;
+    return status;
+}
+} // namespace
+
 // チャネル名称・単位設定モーダルダイアログ (FUNC-003)
 class ChannelConfigDialog : public wxDialog {
 public:
@@ -496,6 +519,7 @@ void ConverterFrame::OnLanguageSelectEn(wxCommandEvent& /*event*/) {
 }
 
 void ConverterFrame::AddFiles(const wxArrayString& filePaths) {
+    bool hasMetaWarning = false;
     for (const auto& path : filePaths) {
         std::string stdPath = std::string(path.utf8_str());
 
@@ -512,6 +536,7 @@ void ConverterFrame::AddFiles(const wxArrayString& filePaths) {
         BatchItem item;
         item.id = static_cast<int>(m_items.size() + 1);
         if (DlogReader::InspectFile(stdPath, item)) {
+            hasMetaWarning |= item.hasMetaWarning;
             if (m_channelMetadata.empty() && !item.channelMetadata.empty()) {
                 m_channelMetadata = item.channelMetadata;
                 for (size_t ch = 0; ch < m_chkChannels.size() && ch < m_channelMetadata.size(); ++ch) {
@@ -529,6 +554,10 @@ void ConverterFrame::AddFiles(const wxArrayString& filePaths) {
         }
     }
     UpdateListDisplay();
+    if (hasMetaWarning) {
+        wxMessageBox(TrWx(StringId::WarnMetadataFallback), TrWx(StringId::WarningDialogTitle),
+                     wxOK | wxICON_WARNING, this);
+    }
 }
 
 void ConverterFrame::UpdateListDisplay() {
@@ -548,22 +577,7 @@ void ConverterFrame::UpdateListDisplay() {
     for (size_t i = 0; i < m_items.size(); ++i) {
         const auto& it = m_items[i];
 
-        wxString statusStr;
-        switch (it.status) {
-            case BatchStatus::Pending:    statusStr = TrWx(StringId::StatusPending); break;
-            case BatchStatus::Converting: statusStr = TrFormatWx(StringId::StatusConvertingProgressFormat, {std::to_string(static_cast<int>(it.progress * 100.0))}); break;
-            case BatchStatus::Completed:  statusStr = TrFormatWx(StringId::StatusCompletedFormat, {std::to_string(it.outputFiles.size())}); break;
-            case BatchStatus::Canceled:   statusStr = TrWx(StringId::StatusCanceled); break;
-            case BatchStatus::Error:
-                if (it.error.hasError()) {
-                    statusStr = it.error.FormatCurrent();
-                } else if (!it.errorMessage.empty()) {
-                    statusStr = TrFormatWx(StringId::StatusErrorWithDetail, {it.errorMessage});
-                } else {
-                    statusStr = TrWx(StringId::StatusError);
-                }
-                break;
-        }
+        const wxString statusStr = FormatBatchStatus(it);
 
         long index = static_cast<long>(i);
         if (!sameCount) {
@@ -976,23 +990,7 @@ void ConverterFrame::OnTimer(wxTimerEvent& /*event*/) {
         if (updatedItems.size() == m_items.size()) {
             m_items = updatedItems;
             for (size_t i = 0; i < m_items.size(); ++i) {
-                wxString stStr;
-                switch (m_items[i].status) {
-                    case BatchStatus::Pending:    stStr = TrWx(StringId::StatusPending); break;
-                    case BatchStatus::Converting: stStr = TrWx(StringId::StatusConverting); break;
-                    case BatchStatus::Completed:  stStr = TrFormatWx(StringId::StatusCompletedFormat, {std::to_string(m_items[i].outputFiles.size())}); break;
-                    case BatchStatus::Canceled:   stStr = TrWx(StringId::StatusCanceled); break;
-                    case BatchStatus::Error:
-                        if (m_items[i].error.hasError()) {
-                            stStr = m_items[i].error.FormatCurrent();
-                        } else if (!m_items[i].errorMessage.empty()) {
-                            stStr = TrFormatWx(StringId::StatusErrorWithDetail, {m_items[i].errorMessage});
-                        } else {
-                            stStr = TrWx(StringId::StatusError);
-                        }
-                        break;
-                }
-                m_listCtrl->SetItem(static_cast<long>(i), 0, stStr);
+                m_listCtrl->SetItem(static_cast<long>(i), 0, FormatBatchStatus(m_items[i]));
             }
         }
     } else {

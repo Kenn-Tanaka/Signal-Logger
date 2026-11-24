@@ -238,6 +238,17 @@ void TestWavExportPlanSpecification() {
     assert(est.channelCount == 4);
     assert(est.containerFormat == WavContainerFormat::StandardWav);
     assert(!est.exceeds4GiBLimit);
+    {
+        auto invalidRate = h;
+        invalidRate.nativeRate = std::numeric_limits<uint32_t>::max();
+        assert(!WavExportPlan::AnalyzePlan(invalidRate, totalFrames, opt).isValid);
+        auto header = h;
+        header.decimationFactor = 1;
+        auto rf64 = opt;
+        rf64.limitTo4GiB = false;
+        const auto overflow = WavExportPlan::AnalyzePlan(header, std::numeric_limits<uint64_t>::max() / 16, rf64);
+        assert(!overflow.isValid && overflow.sizeCalculationOverflow);
+    }
 
     // 時間範囲の変換テスト
     uint64_t sFrame = 0, eFrame = 0;
@@ -296,6 +307,13 @@ void TestWavExportPlanSpecification() {
 // Test 2: Interpolator の補間精度と挙動テスト
 // -------------------------------------------------------------
 void TestWavInterpolator() {
+    {
+        Interpolator interpolator;
+        int checks = 0;
+        assert(!interpolator.Initialize(1, 2048, InterpolationMethod::BandlimitedFir,
+                                        [&checks] { return ++checks == 3; }));
+        assert(interpolator.Initialize(1, 2, InterpolationMethod::BandlimitedFir));
+    }
     std::cout << "[Test 2] Testing Interpolator (Factor 1, ZOH, Linear, Polyphase FIR)..." << std::endl;
 
     // 1. Factor 1: 直接コピー
@@ -420,13 +438,20 @@ void TestWavWriterAndFormat() {
     std::string testMultiWav = "test_multi.wav";
     std::string testRf64 = "test_rf64.wav";
     std::string testPcmWav = "test_pcm16.wav";
+    std::string err;
 
+    {
+        WavWriter writer;
+        assert(writer.Open(testStdWav, WavContainerFormat::StandardWav, 1, 44100, WavSampleFormat::IeeeFloat32, err));
+        const float input[] = {0.5f, std::numeric_limits<float>::infinity()};
+        assert(!writer.WriteFrames(input, 2, err));
+        assert(writer.GetFramesWritten() == 0);
+        writer.Abort();
+    }
     SafeRemoveFile(testStdWav);
     SafeRemoveFile(testMultiWav);
     SafeRemoveFile(testRf64);
     SafeRemoveFile(testPcmWav);
-
-    std::string err;
 
     // 1. 標準 2ch Float32 WAV
     {

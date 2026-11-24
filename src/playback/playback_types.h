@@ -55,7 +55,6 @@ struct PlaybackWindowData {
     bool isLoading = false;
     bool hasError = false;
     LocalizedError error;
-    std::string errorMessage;
 };
 
 } // namespace dlog

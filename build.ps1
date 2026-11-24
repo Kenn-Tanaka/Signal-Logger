@@ -1,12 +1,25 @@
 [CmdletBinding()]
-param([switch]$Test, [switch]$Clean, [switch]$Offline, [switch]$HardwareTests)
+param([switch]$Test, [switch]$Clean, [switch]$Offline, [switch]$HardwareTests,
+      [switch]$UseInstalledDependencies)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/scripts/common-drive.ps1"
 Invoke-WithSafeMappedDrive $PSScriptRoot {
     param($root)
-    & "$PSScriptRoot/scripts/build-deps.ps1" -Offline:$Offline
+    if (!$UseInstalledDependencies) {
+        & "$PSScriptRoot/scripts/build-deps.ps1" -Offline:$Offline
+    }
     $dep = Test-DependencyInstall "$root/.deps/install"
+    $lock = Get-Content "$root/deps/dependencies.lock.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+    $usedDependencies = [ordered]@{}
+    foreach ($entry in $lock.dependencies.PSObject.Properties) {
+        $installed = $dep.dependencies.PSObject.Properties[$entry.Name]
+        if (!$installed -or $installed.Value.commit -ne $entry.Value.commit -or
+            $installed.Value.repository -ne $entry.Value.repository) {
+            throw "Installed dependency does not match the lock: $($entry.Name). Run the dependency builder first."
+        }
+        $usedDependencies[$entry.Name] = $installed.Value
+    }
     $build = Join-Path $root 'build'
     # A different SUBST letter invalidates CMake's absolute paths. Preserve the old tree.
     $relocate = $false
@@ -36,7 +49,7 @@ Invoke-WithSafeMappedDrive $PSScriptRoot {
     $sourceHashes = Get-BuilderSourceHashes $root
     $provenance = [ordered]@{
         schema=2; build_timestamp=[DateTime]::UtcNow.ToString('o'); toolchain=$dep.toolchain;
-        dependencies=$dep.dependencies; deps_cache_key=$dep.cache_key;
+        dependencies=$usedDependencies; deps_cache_key=$dep.cache_key;
         dependency_marker_sha256=(Get-FileHash "$root/.deps/install/build_completed.json").Hash;
         source_hashes=$sourceHashes;
         executables=@(foreach($name in @('DataLogger.exe','DlogToCsv.exe')) {

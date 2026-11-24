@@ -13,7 +13,7 @@
 * **プログラミング言語**: C++ (C++17以上)
 * **GUIフレームワーク**: wxWidgets 3.2.x (スタティックリンク)
 * **オーディオI/O**: PortAudio v19 (スタティックリンク, WASAPI / MME)
-* **キュー**: moodycamel::ConcurrentQueue / ReaderWriterQueue (ロックフリー, ヘッダオンリー)
+* **キュー**: moodycamel::ReaderWriterQueue (ロックフリー, ヘッダオンリー)
 * **コンパイラ・ビルドシステム**:
   * g++ (MinGW-w64 UCRT 13.2.0)
   * CMake (3.26+) / Ninja

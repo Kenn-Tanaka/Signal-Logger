@@ -107,31 +107,6 @@
         ]
       },
       "patches": []
-    },
-    "concurrentqueue": {
-      "type": "git",
-      "repository": "https://github.com/cameron314/concurrentqueue.git",
-      "tag": "v1.0.4",
-      "commit": "683b9e31ea15eb69f1b81cc1defc7850d5f20b71",
-      "submodules": false,
-      "license": {
-        "name": "Simplified BSD License",
-        "relative_path": "LICENSE.md"
-      },
-      "build_system": "header-only",
-      "cmake_options": [],
-      "output_artifacts": {
-        "headers": [
-          "concurrentqueue.h",
-          "blockingconcurrentqueue.h",
-          "lightweightsemaphore.h"
-        ],
-        "include_dirs": [
-          "."
-        ]
-      },
-      "notes": "Surveyed across codebase: ReaderWriterQueue is the sole SPSC queue used. Kept for architectural reference.",
-      "patches": []
     }
   }
 }

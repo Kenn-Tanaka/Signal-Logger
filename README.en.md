@@ -64,7 +64,7 @@ Dependency definitions and commit SHAs are locked in `deps/dependencies.lock.jso
 (or `build.bat -Test`)
 
 - Executables are generated in the `build/` directory (`build/DataLogger.exe`, `build/DlogToCsv.exe`).
-- CTest executes test suites (core logger logic, CSV converter, and GUI smoke test).
+- CTest runs seven tests: three for logger core, CSV conversion, and WAV export, plus four bilingual startup smoke tests.
 - Real hardware audio capture tests are skipped by default. Specify `-HardwareTests -Test` when required.
 
 ### 3. Release Packaging
@@ -75,7 +75,7 @@ Dependency definitions and commit SHAs are locked in `deps/dependencies.lock.jso
 
 - Automatic verification that all tests pass
 - Static link verification (verifies no non-system DLL dependencies exist in PE headers)
-- Binary package contains EXEs, user docs, notices, and change history (excludes SPEC and internal developer guidelines)
+- Binary package contains EXEs, user docs, notices, and build provenance (excludes SPEC and internal developer guidelines)
 - Automatically generates `MANIFEST.txt` with locked dependency revisions and SHA-256 hashes
 - Generates `dist/DataLogger-v<Version>-win64.zip`
 - Source builder package `dist/DataLogger-v<Version>-builder.zip` contains source code, build scripts, and docs (excludes compiled binaries and dependencies)
@@ -98,4 +98,4 @@ Builder ZIP verification can be run via `scripts/test-clean-build.ps1 -BuilderZi
 Source code and documentation specific to this project are licensed under the **MIT License** (see [LICENSE](LICENSE)).
 Copyright Notice: `Copyright (c) 2026 Kenichiro Tanaka`
 
-For third-party library licenses (wxWidgets, PortAudio, readerwriterqueue, concurrentqueue, GCC runtime), see [LICENSES.md](LICENSES.md) and individual license files.
+For third-party library licenses (wxWidgets, PortAudio, readerwriterqueue, GCC runtime), see [LICENSES.md](LICENSES.md) and individual license files.

@@ -160,6 +160,27 @@ function Assert-MarkdownLinks {
     }
 }
 
+function Remove-PackageStage {
+    param([string]$Stage, [string]$OutputDirectory)
+    if ((Split-Path -Leaf $Stage) -notmatch '^\.(binary|builder)-stage-[0-9a-f]{32}$') {
+        throw 'Unexpected package stage name.'
+    }
+    $safe = Assert-SafeDirectoryPath $Stage $OutputDirectory
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
+        if (!(Test-Path -LiteralPath $safe)) { return }
+        try {
+            Remove-Item -LiteralPath $safe -Recurse -Force -ErrorAction Stop
+            return
+        } catch {
+            if ($attempt -eq 4) {
+                Write-Warning "Could not remove package staging directory: $safe"
+                return
+            }
+            Start-Sleep -Milliseconds 200
+        }
+    }
+}
+
 function Complete-Package {
     param([string]$Stage, [string]$Destination)
     # Never delete/overwrite a previous release. Use another version/output directory.

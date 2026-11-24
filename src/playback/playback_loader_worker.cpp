@@ -63,6 +63,7 @@ bool PlaybackLoaderWorker::OpenFile(const std::string& filePath, std::string& er
     info.filePath = filePath;
     info.header = session->header;
     info.channelMetadata = session->channelMetadata;
+    info.hasMetaWarning = !newReader->GetMetaWarning().empty();
     info.totalFrames = session->totalFrames;
     info.durationSec = session->durationSec;
     info.sampleRate = session->sampleRate;
@@ -124,6 +125,11 @@ DLogFileHeader PlaybackLoaderWorker::GetHeader() const {
 std::vector<ChannelMetadata> PlaybackLoaderWorker::GetChannelMetadata() const {
     std::lock_guard<std::mutex> fLock(m_fileInfoMutex);
     return m_fileInfo.channelMetadata;
+}
+
+bool PlaybackLoaderWorker::HasMetaWarning() const {
+    std::lock_guard<std::mutex> lock(m_fileInfoMutex);
+    return m_fileInfo.hasMetaWarning;
 }
 
 uint64_t PlaybackLoaderWorker::GetTotalFrames() const {
@@ -310,7 +316,7 @@ void PlaybackLoaderWorker::WorkerLoop() {
                         if (!result.error.hasError()) {
                             result.error = LocalizedError{StringId::ErrReadPastEnd};
                         }
-                        result.errorMessage = session->reader->GetLastError();
+
                     } else {
                         result.frameCount = framesRead;
                         for (size_t f = 0; f < framesRead; ++f) {
@@ -358,7 +364,7 @@ void PlaybackLoaderWorker::WorkerLoop() {
                             if (!result.error.hasError()) {
                                 result.error = LocalizedError{StringId::ErrReadPastEnd};
                             }
-                            result.errorMessage = session->reader->GetLastError();
+
                             break;
                         }
 
@@ -418,7 +424,7 @@ void PlaybackLoaderWorker::WorkerLoop() {
             errResult.requestSeq = req.requestSeq;
             errResult.hasError = true;
             errResult.error = LocalizedError{StringId::ErrConversionException, {ex.what()}};
-            errResult.errorMessage = ex.what();
+
             std::lock_guard<std::mutex> resLock(m_resultMutex);
             m_latestResult = std::move(errResult);
             m_hasNewResult = true;

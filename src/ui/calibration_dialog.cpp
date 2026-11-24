@@ -3,8 +3,8 @@
 #include <wx/sizer.h>
 #include <wx/statbox.h>
 #include <wx/msgdlg.h>
-#include <iomanip>
-#include <sstream>
+#include <algorithm>
+#include <utility>
 
 namespace dlog {
 
@@ -15,10 +15,9 @@ wxBEGIN_EVENT_TABLE(CalibrationDialog, wxDialog)
     EVT_BUTTON(ID_CAL_APPLY, CalibrationDialog::OnApply)
 wxEND_EVENT_TABLE()
 
-CalibrationDialog::CalibrationDialog(wxWindow* parent, WaveformPanel* waveformPanel, double currentVfs, int channelCount)
+CalibrationDialog::CalibrationDialog(wxWindow* parent, int channelCount, std::function<SignalStats(int)> measure)
     : wxDialog(parent, wxID_ANY, TrWx(StringId::CalibrateDialogTitle), wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
-      m_waveformPanel(waveformPanel),
-      m_currentVfs(currentVfs),
+      m_measure(std::move(measure)),
       m_channelCount(std::max(1, channelCount)),
       m_timer(this, ID_CAL_TIMER)
 {
@@ -78,7 +77,7 @@ CalibrationDialog::CalibrationDialog(wxWindow* parent, WaveformPanel* waveformPa
     monitorGrid->Add(m_lblCalculatedVfs, 0, wxALIGN_CENTER_VERTICAL);
 
     // 信号品質ステータス
-    monitorGrid->Add(new wxStaticText(monitorBox->GetStaticBox(), wxID_ANY, wxT("Status:")), 0, wxALIGN_CENTER_VERTICAL);
+    monitorGrid->Add(new wxStaticText(monitorBox->GetStaticBox(), wxID_ANY, TrWx(StringId::ColStatus)), 0, wxALIGN_CENTER_VERTICAL);
     m_lblStatus = new wxStaticText(monitorBox->GetStaticBox(), wxID_ANY, TrWx(StringId::CalibrateStatusNoSignal));
     monitorGrid->Add(m_lblStatus, 0, wxALIGN_CENTER_VERTICAL);
 
@@ -127,20 +126,8 @@ void CalibrationDialog::OnChannelSelected(wxCommandEvent& /*event*/) {
 }
 
 void CalibrationDialog::UpdateCalculations() {
-    if (!m_waveformPanel) return;
-
-    if (m_waveformPanel->IsHold()) {
-        m_measuredVpp = 0.0;
-        if (m_lblStatus) m_lblStatus->SetLabel(TrWx(StringId::CalibrateStatusNoSignal));
-        if (m_lblCalculatedVfs) {
-            m_lblCalculatedVfs->SetLabel(wxT("-- (") + TrWx(StringId::CalibrateStatusNoSignal) + wxT(")"));
-        }
-        if (m_btnApply) m_btnApply->Enable(false);
-        return;
-    }
-
     // 1. 直近1.0秒間の信号統計を取得
-    SignalStats stats = m_waveformPanel->MeasureChannelStats(m_selectedChannel, 1.0);
+    SignalStats stats = m_measure(m_selectedChannel);
     m_measuredVpp = stats.vpp;
 
     // 表示更新: 実測 Vpp & ピーク値
@@ -188,7 +175,9 @@ void CalibrationDialog::UpdateCalculations() {
 
     // 3. フルスケール電圧 (V_FS) のリアルタイム計算
     double calVfs = 0.0;
-    bool calcOk = validTarget && CalibrationCalculator::CalculateFullScale(targetVpp, stats.vpp, calVfs);
+    bool calcOk = validTarget && (stats.status == CalibrationSignalStatus::Good ||
+                                 stats.status == CalibrationSignalStatus::LowSignal) &&
+                  CalibrationCalculator::CalculateFullScale(targetVpp, stats.vpp, calVfs);
 
     if (calcOk) {
         m_calculatedVfs = calVfs;
@@ -198,22 +187,15 @@ void CalibrationDialog::UpdateCalculations() {
         }
     } else {
         if (m_lblCalculatedVfs) {
-            if (!validTarget) {
-                m_lblCalculatedVfs->SetLabel(wxT("-- (Invalid Input)"));
-            } else if (stats.status == CalibrationSignalStatus::Clipping) {
-                m_lblCalculatedVfs->SetLabel(wxT("-- (Clipping)"));
-            } else {
-                m_lblCalculatedVfs->SetLabel(wxT("-- (No Signal)"));
-            }
+            m_lblCalculatedVfs->SetLabel(wxT("--"));
             m_lblCalculatedVfs->SetForegroundColour(wxColour(120, 120, 120));
         }
     }
 
     // 適用ボタンの有効化判定:
     // 目標値が有効、かつ信号ステータスが Good または LowSignal の場合に適用可能
-    bool canApply = calcOk && (stats.status == CalibrationSignalStatus::Good || stats.status == CalibrationSignalStatus::LowSignal);
     if (m_btnApply) {
-        m_btnApply->Enable(canApply);
+        m_btnApply->Enable(calcOk);
     }
 }
 
@@ -225,16 +207,11 @@ void CalibrationDialog::OnApply(wxCommandEvent& /*event*/) {
         return;
     }
 
-    SignalStats stats = m_waveformPanel ? m_waveformPanel->MeasureChannelStats(m_selectedChannel, 1.0) : SignalStats{};
-    if (m_waveformPanel && m_waveformPanel->IsHold()) {
-        wxMessageBox(TrWx(StringId::CalibrateStatusNoSignal), TrWx(StringId::CalibrateErrorTitle), wxOK | wxICON_WARNING, this);
-        return;
-    }
-    if (stats.status == CalibrationSignalStatus::Clipping || stats.vpp < 0.01) {
-        wxMessageBox(
-            TrFormatWx(StringId::ErrCalibratePrompt, wxString::Format(wxT("%.4f"), stats.vpp)),
-            TrWx(StringId::CalibrateErrorTitle), wxOK | wxICON_WARNING, this
-        );
+    SignalStats stats = m_measure(m_selectedChannel);
+    if (stats.status != CalibrationSignalStatus::Good && stats.status != CalibrationSignalStatus::LowSignal) {
+        const auto reason = stats.status == CalibrationSignalStatus::Clipping
+            ? StringId::CalibrateStatusClipping : StringId::CalibrateStatusNoSignal;
+        wxMessageBox(TrWx(reason), TrWx(StringId::CalibrateErrorTitle), wxOK | wxICON_WARNING, this);
         return;
     }
 

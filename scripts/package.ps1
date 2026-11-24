@@ -12,7 +12,7 @@ Invoke-WithSafeMappedDrive $project {
     $build = Join-Path $root 'build'
     $dep = Test-DependencyInstall "$root/.deps/install"
     $prov = Get-Content "$build/build_provenance.json" -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($prov.schema -ne 2 -or !$prov.tests.full_suite -or $prov.tests.total -lt 3) { throw 'Run build.ps1 -Test first.' }
+    if ($prov.schema -ne 2 -or !$prov.tests.full_suite -or $prov.tests.passed -lt 7) { throw 'Run build.ps1 -Test first.' }
     if ($prov.dependency_marker_sha256 -ne (Get-FileHash "$root/.deps/install/build_completed.json").Hash) { throw 'Dependency set changed since build.' }
     $current = Get-BuilderSourceHashes $root
     foreach ($rel in $current.Keys) {
@@ -38,9 +38,13 @@ Invoke-WithSafeMappedDrive $project {
         if ($LASTEXITCODE -ne 0) { throw 'Converter tests failed.' }
         & "$build/test_wav_export.exe"
         if ($LASTEXITCODE -ne 0) { throw 'WAV export tests failed.' }
-        $smoke = Start-Process -FilePath "$build/DataLogger.exe" -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
-        if (!$smoke.WaitForExit(15000)) { $smoke.Kill(); throw 'Smoke test timeout.' }
-        if ($smoke.ExitCode -ne 0) { throw 'Smoke test failed.' }
+        foreach ($exe in @('DataLogger.exe','DlogToCsv.exe')) {
+            foreach ($lang in @('ja','en')) {
+                $smoke = Start-Process -FilePath "$build/$exe" -ArgumentList @('--smoke-test',"--language=$lang") -PassThru -WindowStyle Hidden
+                if (!$smoke.WaitForExit(15000)) { $smoke.Kill(); throw "Smoke test timeout: $exe ($lang)." }
+                if ($smoke.ExitCode -ne 0) { throw "Smoke test failed: $exe ($lang)." }
+            }
+        }
     } finally { Pop-Location }
     New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
     $stage = Join-Path $OutputDir ('.binary-stage-' + [guid]::NewGuid().ToString('N'))
@@ -51,14 +55,15 @@ Invoke-WithSafeMappedDrive $project {
         Copy-Item -LiteralPath "$root/docs/BINARY_README.md" -Destination "$stage/README.md"
         Copy-Item -LiteralPath "$root/docs/BINARY_README.en.md" -Destination "$stage/README.en.md"
         foreach ($name in @('QUICKSTART.md','QUICKSTART.en.md','REFERENCE_MANUAL.md','REFERENCE_MANUAL.en.md')) { Copy-Item -LiteralPath "$root/docs/$name" -Destination "$stage/docs/" }
-        Copy-Item -LiteralPath "$root/.deps/install/licenses" -Destination "$stage/licenses" -Recurse
+        $lock = Get-Content "$root/deps/dependencies.lock.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+        New-Item -ItemType Directory -Path "$stage/licenses" | Out-Null
+        foreach ($name in @($lock.dependencies.PSObject.Properties.Name) + 'runtime') {
+            Copy-Item -LiteralPath "$root/.deps/install/licenses/$name" -Destination "$stage/licenses/" -Recurse
+        }
         Assert-MarkdownLinks $stage
         & "$PSScriptRoot/test-packaging.ps1" -Directory $stage -Kind Binary
         Complete-Package $stage (Join-Path $OutputDir "DataLogger-v$Version-win64.zip")
     } finally {
-        if (Test-Path -LiteralPath $stage) {
-            $safeStage = Assert-SafeDirectoryPath $stage $OutputDir
-            Remove-Item -LiteralPath $safeStage -Recurse -Force
-        }
+        Remove-PackageStage $stage $OutputDir
     }
 }

@@ -75,7 +75,7 @@ struct BatchItem {
     uint64_t convertedFrames = 0;
     std::vector<std::string> outputFiles;  // 分割出力されたファイル一覧
     LocalizedError error;
-    std::string errorMessage;
+    bool hasMetaWarning = false;
 };
 
 // バッチ全体の進捗統計

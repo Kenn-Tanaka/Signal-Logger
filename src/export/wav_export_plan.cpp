@@ -189,6 +189,11 @@ WavExportEstimate WavExportPlan::AnalyzePlan(const DLogFileHeader& header, uint6
 
     // dataバイト数の計算とオーバーフロー検出
     uint64_t frameBytes = static_cast<uint64_t>(est.channelCount) * static_cast<uint64_t>(est.bytesPerSample);
+    if (static_cast<uint64_t>(est.outputRate) * frameBytes > std::numeric_limits<uint32_t>::max()) {
+        est.validationError = "WAV byte rate exceeds the format limit.";
+        est.errorInfo = MakeError(StringId::ErrWavInvalidHeader);
+        return est;
+    }
     if (frameBytes > 0 && est.outputFrames > (std::numeric_limits<uint64_t>::max() / frameBytes)) {
         est.sizeCalculationOverflow = true;
         est.isValid = false;
@@ -204,6 +209,13 @@ WavExportEstimate WavExportPlan::AnalyzePlan(const DLogFileHeader& header, uint6
     // 4 GiB境界の判定
     // 標準WAVのヘッダサイズを基に暫定計算
     uint64_t stdHdr = CalculateHeaderSize(WavContainerFormat::StandardWav, est.channelCount, options.sampleFormat);
+    const uint64_t rfHdr = CalculateHeaderSize(WavContainerFormat::Rf64, est.channelCount, options.sampleFormat);
+    if (est.estimatedDataBytes > std::numeric_limits<uint64_t>::max() - rfHdr - pad) {
+        est.sizeCalculationOverflow = true;
+        est.validationError = "Total WAV file size exceeds 64-bit integer range.";
+        est.errorInfo = MakeError(StringId::ErrWavGeneral);
+        return est;
+    }
     uint64_t totalStd = stdHdr + est.estimatedDataBytes + pad;
 
     bool exceedsLimit = (totalStd >= STANDARD_WAV_LIMIT_BYTES || est.estimatedDataBytes >= STANDARD_WAV_LIMIT_BYTES);
@@ -223,7 +235,6 @@ WavExportEstimate WavExportPlan::AnalyzePlan(const DLogFileHeader& header, uint6
     } else {
         if (exceedsLimit) {
             est.containerFormat = WavContainerFormat::Rf64;
-            uint64_t rfHdr = CalculateHeaderSize(WavContainerFormat::Rf64, est.channelCount, options.sampleFormat);
             est.estimatedTotalBytes = rfHdr + est.estimatedDataBytes + pad;
         } else {
             est.containerFormat = WavContainerFormat::StandardWav;

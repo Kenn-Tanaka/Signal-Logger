@@ -98,7 +98,7 @@ Invoke-WithSafeMappedDrive $projectRoot {
     if (!(Test-Path -LiteralPath $setup)) { throw 'Release wx setup.h missing.' }
     Copy-Item -LiteralPath $setup -Destination "$stage/lib/gcc_x64_lib/mswu/wx/setup.h"
     Copy-Item -LiteralPath "$($sources.wxWidgets)/include/wx" -Destination "$stage/include/wx" -Recurse
-    foreach ($name in @('readerwriterqueue','concurrentqueue')) {
+    foreach ($name in @('readerwriterqueue')) {
         foreach ($header in $lock.dependencies.$name.output_artifacts.headers) {
             Copy-Item -LiteralPath "$($sources[$name])/$header" -Destination "$stage/include/$header"
         }
@@ -111,7 +111,7 @@ Invoke-WithSafeMappedDrive $projectRoot {
         'src/tiff/COPYRIGHT','src/zlib/README','3rdparty/pcre/LICENCE','3rdparty/nanosvg/LICENSE.txt')) {
         Copy-Item -LiteralPath (Join-Path $sources.wxWidgets $rel) -Destination "$stage/licenses/wxWidgets/$($rel.Replace('/','_'))"
     }
-    foreach ($name in @('readerwriterqueue','concurrentqueue')) {
+    foreach ($name in @('readerwriterqueue')) {
         Get-ChildItem -LiteralPath $sources[$name] -Filter '*.h' | ForEach-Object {
             Copy-Item -LiteralPath $_.FullName -Destination "$stage/licenses/$name/"
         }

@@ -19,37 +19,38 @@
 
 namespace dlog {
 
+std::mutex LanguagePreferences::s_stateMutex;
 std::atomic<Language> LanguagePreferences::s_currentLanguage{Language::English};
 bool LanguagePreferences::s_hasCliOverride = false;
 std::atomic<bool> LanguagePreferences::s_initialized{false};
 std::string LanguagePreferences::s_customSettingsPath;
 
 void LanguagePreferences::Initialize(const std::string& cliLanguageOverride) {
-    s_initialized = true;
+    std::lock_guard<std::mutex> lock(s_stateMutex);
+    InitializeLocked(cliLanguageOverride);
+}
 
-    if (!cliLanguageOverride.empty()) {
-        s_hasCliOverride = true;
+void LanguagePreferences::InitializeLocked(const std::string& cliLanguageOverride) {
+    s_hasCliOverride = !cliLanguageOverride.empty();
+    if (s_hasCliOverride) {
         s_currentLanguage = LanguageFromCode(cliLanguageOverride, DetectSystemLanguage());
-        return;
-    }
-
-    s_hasCliOverride = false;
-    Language diskLang;
-    if (LoadFromDisk(diskLang)) {
-        s_currentLanguage = diskLang;
     } else {
-        s_currentLanguage = DetectSystemLanguage();
+        Language diskLang;
+        s_currentLanguage = LoadFromDisk(diskLang) ? diskLang : DetectSystemLanguage();
     }
+    s_initialized.store(true, std::memory_order_release);
 }
 
 Language LanguagePreferences::GetCurrentLanguage() {
     if (!s_initialized.load(std::memory_order_acquire)) {
-        Initialize();
+        std::lock_guard<std::mutex> lock(s_stateMutex);
+        if (!s_initialized.load(std::memory_order_relaxed)) InitializeLocked("");
     }
     return s_currentLanguage.load(std::memory_order_acquire);
 }
 
 bool LanguagePreferences::SetCurrentLanguage(Language lang, bool persistToDisk, std::string* outError) {
+    std::lock_guard<std::mutex> lock(s_stateMutex);
     if (outError) outError->clear();
     s_currentLanguage = lang;
     s_initialized = true;
@@ -67,6 +68,7 @@ bool LanguagePreferences::SetCurrentLanguage(Language lang, bool persistToDisk, 
 }
 
 bool LanguagePreferences::HasCliOverride() {
+    std::lock_guard<std::mutex> lock(s_stateMutex);
     return s_hasCliOverride;
 }
 
@@ -235,6 +237,7 @@ void LanguagePreferences::SetCustomSettingsPathForTesting(const std::string& cus
 }
 
 void LanguagePreferences::ResetForTesting() {
+    std::lock_guard<std::mutex> lock(s_stateMutex);
     s_customSettingsPath.clear();
     s_hasCliOverride = false;
     s_initialized = false;

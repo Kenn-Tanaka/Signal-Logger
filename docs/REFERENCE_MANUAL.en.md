@@ -39,6 +39,8 @@ The Anti-Aliasing checkbox enables the digital low-pass filter (17-tap FIR for $
 
 ### Voltage Calibration
 
+Resume the live waveform before calibrating. Apply becomes available once enough consecutive samples have arrived. At 1 Hz, wait for at least two samples.
+
 1. Connect a known AC reference signal within hardware ratings to an input channel.
 2. Click "Calibrate...". If stopped, a confirmation prompt appears to automatically start preview and begin live signal monitoring (opens immediately if already previewing).
 3. In the calibration dialog, select the target channel (CH 1 to CH N) receiving the reference signal.
@@ -81,12 +83,14 @@ On stopping, the app waits for queues to flush and files to finalize. Do not for
 
 ### WAV Export Feature
 
-Click the "Export WAV..." button in the Playback tab to export the opened DLOG recording as a standard WAV or 64-bit RF64 audio file.
+If a companion `.meta` is unreadable or inconsistent, playback and the CSV converter show a warning and use default channel names and units.
+
+Click the "Export WAV..." button in the Playback tab to export the opened DLOG recording as a standard WAV or 64-bit RF64 audio file. Progress and Cancel WAV export appear in the Playback tab. You can switch language while exporting. Both formats reject non-finite samples.
 
 | Setting | Details & Specifications |
 |---|---|
 | Output Sampling Rate | Always the pre-decimation `native_rate` from the DLOG header. Interpolation factor $N = \text{decimation\_factor}$. Does not restore lost frequency components or original analog samples |
-| Interpolation Method | **Zero-Order Hold**: Holds sample value constant until next point<br>**Linear [Default]**: Connects adjacent points with straight line segments<br>**Bandlimited (FIR)**: 8-tap Blackman-windowed sinc polyphase filter. 1.0 DC gain normalized, sinc zero-crossing bit-exact reproduction at sample points, clamped boundary padding, zero-phase centering. May introduce subtle ringing on steep edges (disabled when decimation factor is 1) |
+| Interpolation Method | **Zero-Order Hold**: Holds sample value constant until next point<br>**Linear [Default]**: Connects adjacent points with straight line segments<br>**Bandlimited (FIR)**: 8-tap Blackman-windowed sinc polyphase filter. 1.0 DC gain normalized, sinc reproduction at sample points with possible floating-point rounding error, clamped boundary padding, zero-phase centering. May introduce subtle ringing on steep edges (disabled when decimation factor is 1) |
 | Output Range | **Entire File [Default]** or **Specified Range [start, end)**. Strictly managed internally with 64-bit frame arithmetic |
 | Channels | Select 1 to 8 channels (maintains ascending order). Multi-channel files ($\ge 3$ ch) set `dwChannelMask = 0` (direct output) to prevent arbitrary surround speaker mapping |
 | Output Format | **IEEE 32-bit Float [Default]** or **16-bit Signed PCM** (no auto-normalization; maps $[-1.0, +1.0]$ directly to $[-32768, +32767]$, clips out-of-range samples and reports counts upon completion; rejects non-finite NaN/Inf) |

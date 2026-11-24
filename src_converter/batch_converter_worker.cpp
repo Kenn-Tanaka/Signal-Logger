@@ -192,7 +192,6 @@ bool BatchConverterWorker::Start(const std::vector<BatchItem>& items, const Conv
             it.status = BatchStatus::Pending;
             it.progress = 0.0;
             it.outputFiles.clear();
-            it.errorMessage.clear();
             m_totalBytesAllFiles += it.fileSizeBytes;
         }
     }
@@ -281,10 +280,8 @@ void BatchConverterWorker::WorkerLoop() {
             success = ConvertSingleFile(itemCopy);
         } catch (const std::exception& ex) {
             itemCopy.error = MakeError(StringId::ErrConversionException, ex.what());
-            itemCopy.errorMessage = itemCopy.error.FormatCurrent();
         } catch (...) {
             itemCopy.error = MakeError(StringId::ErrUnknown);
-            itemCopy.errorMessage = itemCopy.error.FormatCurrent();
         }
 
         {
@@ -329,15 +326,15 @@ bool BatchConverterWorker::ConvertSingleFile(BatchItem& item) {
         if (!item.error.HasError()) {
             item.error = MakeError(StringId::ErrFileOpenFailed, item.inputFilePath);
         }
-        item.errorMessage = item.error.FormatCurrent();
         return false;
     }
 
+    item.hasMetaWarning = !reader.GetMetaWarning().empty();
+    item.channelMetadata = reader.GetChannelMetadata();
     const DLogFileHeader& header = reader.GetHeader();
     uint64_t totalFrames = reader.GetTotalFrames();
     if (totalFrames == 0) {
         item.error = MakeError(StringId::ErrZeroFramesInFile);
-        item.errorMessage = item.error.FormatCurrent();
         return false;
     }
 
@@ -347,12 +344,10 @@ bool BatchConverterWorker::ConvertSingleFile(BatchItem& item) {
     if (m_options.enableTimeRange) {
         if (plan.startFrame >= plan.endFrame) {
             item.error = MakeError(StringId::InvalidTimeRangeStartGteEnd);
-            item.errorMessage = item.error.FormatCurrent();
             return false;
         }
         if (!reader.SeekToFrame(plan.startFrame)) {
             item.error = MakeError(StringId::ErrSeekFailed);
-            item.errorMessage = item.error.FormatCurrent();
             return false;
         }
     }
@@ -369,7 +364,6 @@ bool BatchConverterWorker::ConvertSingleFile(BatchItem& item) {
     CsvWriter writer;
     if (!writer.Initialize(plan.baseOutputDir, plan.baseFileName, fileOptions, header, plan.willSplit, plan.totalParts, plan.branchDigits)) {
         item.error = MakeError(StringId::ErrCsvCreateFailed, plan.baseFileName);
-        item.errorMessage = item.error.FormatCurrent();
         return false;
     }
 
@@ -386,7 +380,6 @@ bool BatchConverterWorker::ConvertSingleFile(BatchItem& item) {
             item.progress = static_cast<double>(processedFramesInTarget) /
                             static_cast<double>(targetFrames);
             item.error = MakeError(StringId::ErrUserCanceled);
-            item.errorMessage = item.error.FormatCurrent();
             return false;
         }
 
@@ -397,7 +390,6 @@ bool BatchConverterWorker::ConvertSingleFile(BatchItem& item) {
             if (!item.error.HasError()) {
                 item.error = MakeError(StringId::ErrPcmReadIncomplete);
             }
-            item.errorMessage = item.error.FormatCurrent();
             writer.Abort();
             item.outputFiles = writer.GetGeneratedFiles();
             item.convertedFrames = processedFramesInTarget;
@@ -412,7 +404,6 @@ bool BatchConverterWorker::ConvertSingleFile(BatchItem& item) {
                 const float* samplesPtr = &chunkBuffer[f * channelCount];
                 if (!writer.WriteRow(currentAbsoluteFrame, samplesPtr, channelCount)) {
                     item.error = MakeError(StringId::ErrDataWriteFailed);
-                    item.errorMessage = item.error.FormatCurrent();
                     writer.Abort();
                     item.outputFiles = writer.GetGeneratedFiles();
                     item.convertedFrames = processedFramesInTarget + f;
@@ -431,7 +422,6 @@ bool BatchConverterWorker::ConvertSingleFile(BatchItem& item) {
 
     if (processedFramesInTarget != targetFrames) {
         item.error = MakeError(StringId::ErrPrematureEof);
-        item.errorMessage = item.error.FormatCurrent();
         writer.Abort();
         item.outputFiles = writer.GetGeneratedFiles();
         item.convertedFrames = processedFramesInTarget;
@@ -442,7 +432,6 @@ bool BatchConverterWorker::ConvertSingleFile(BatchItem& item) {
 
     if (!writer.Finish()) {
         item.error = MakeError(StringId::ErrFlushFailed);
-        item.errorMessage = item.error.FormatCurrent();
         item.outputFiles = writer.GetGeneratedFiles();
         item.convertedFrames = processedFramesInTarget;
         item.progress = static_cast<double>(processedFramesInTarget) /

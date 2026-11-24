@@ -293,6 +293,27 @@ void TestVoltageScalingConversion() {
     std::cout << "[Test 6] Testing voltage scaling and [V] column headers in CSV export..." << std::endl;
     std::string binPath = "voltage_test.bin";
 
+    {
+        ConversionOptions opt;
+        opt.timeFormat = TimeFormat::None;
+        opt.enableSplitLines = false;
+        DLogFileHeader header;
+        header.channels = 1;
+        header.fullScaleVoltage = 1e40;
+        CsvWriter writer;
+        assert(writer.Initialize(".", "voltage_large", opt, header));
+        const float sample = 1.0f;
+        assert(writer.WriteRow(0, &sample, 1));
+        assert(writer.Finish());
+        std::ifstream csv("voltage_large.csv");
+        std::string line;
+        std::getline(csv, line);
+        std::getline(csv, line);
+        assert(std::abs(std::stod(line) / header.fullScaleVoltage - 1.0) < 1e-12);
+        csv.close();
+        SafeRemoveFile("voltage_large.csv");
+    }
+
     // 2ch, 100Hz, 5フレーム, fullScaleVoltage = 5.0 V
     // CH1 = 0.50f, CH2 = -0.20f
     {
@@ -1003,7 +1024,7 @@ void TestData003NonDestructiveRecovery() {
 
     {
         std::ofstream metaOut(partialPath + ".meta");
-        metaOut << "[DLOG_METADATA]\nmagic=DLOG\nversion=2\nchannels=2\nstart_timestamp_utc=1791510000000\nsample_rate=44100\nnative_rate=88200\ndecimation_factor=2\n\n";
+        metaOut << "[DLOG_METADATA]\nmagic=DLOG\nversion=2\nchannels=2\nstart_timestamp_utc=1791510000000\nsample_rate=44100\nnative_rate=88200\ndecimation_factor=2\nfull_scale_voltage=1.0\n\n";
         metaOut << "[CH1]\nname=RecoveredCh1\nunit=V\n\n";
         metaOut << "[CH2]\nname=RecoveredCh2\nunit=V\n\n";
     }
@@ -1116,6 +1137,22 @@ void TestValidateHeaderAndStrictMetadata() {
         h.fullScaleVoltage = 1.0;
 
         std::string metaFile = "test_strict_meta.bin.meta";
+
+        CreateDummyDlogFile("test_strict_meta.bin", 2, 22050, 1);
+        for (const bool omitScale : {false, true}) {
+            std::ofstream out(metaFile, std::ios::trunc);
+            out << "[DLOG_METADATA]\nmagic=DLOG\nversion=2\nchannels=2\n"
+                << "start_timestamp_utc=1791510000000\nnative_rate=44100\n"
+                << (omitScale ? "decimation_factor=2\n" : "full_scale_voltage=1.0\n")
+                << "\n[CH1]\nname=UnexpectedLabel\nunit=mA\n";
+            out.close();
+            BatchItem item;
+            assert(DlogReader::InspectFile("test_strict_meta.bin", item));
+            assert(item.hasMetaWarning);
+            assert(item.channelMetadata[0].name == "CH1");
+            assert(item.channelMetadata[0].unit == "V");
+        }
+        SafeRemoveFile("test_strict_meta.bin");
 
         // Case A: Missing required key (channels missing)
         {

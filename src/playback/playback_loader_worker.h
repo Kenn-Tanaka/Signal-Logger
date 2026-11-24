@@ -55,6 +55,7 @@ public:
 
     DLogFileHeader GetHeader() const;
     std::vector<ChannelMetadata> GetChannelMetadata() const;
+    bool HasMetaWarning() const;
     uint64_t GetTotalFrames() const;
     double GetDurationSec() const;
     double GetSampleRate() const;
@@ -114,6 +115,7 @@ private:
         std::string filePath;
         DLogFileHeader header{};
         std::vector<ChannelMetadata> channelMetadata;
+        bool hasMetaWarning = false;
         uint64_t totalFrames = 0;
         double durationSec = 0.0;
         double sampleRate = 0.0;

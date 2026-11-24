@@ -10,11 +10,11 @@
 #include <wx/filename.h>
 #include <wx/stdpaths.h>
 #include <wx/menu.h>
-#include <wx/progdlg.h>
-#include <wx/app.h>
 #include <fstream>
 #include <filesystem>
 #include <iomanip>
+#include <limits>
+#include <locale>
 #include <sstream>
 
 namespace dlog {
@@ -164,6 +164,26 @@ bool MainFrame::PerformSmokeTest() {
     wxBookCtrlEvent event2(wxEVT_NOTEBOOK_PAGE_CHANGED, ID_MODE_NOTEBOOK, 0, 1);
     OnModeChanged(event2);
 
+    // Verify calibration input gating with two synthetic samples and a discontinuity.
+    m_waveformPanel->SetChannelCount(1);
+    m_waveformPanel->SetSampleRate(2.0);
+    AudioBlock sample{};
+    sample.channels = 1;
+    sample.frameCount = 1;
+    sample.sampleRate = 2.0;
+    sample.samples[0] = -0.25f;
+    m_waveformPanel->PushAudioBlock(sample);
+    if (m_waveformPanel->MeasureChannelStats(0).status != CalibrationSignalStatus::NoSignal) return false;
+    sample.firstOutputFrameIndex = 1;
+    sample.samples[0] = 0.25f;
+    m_waveformPanel->PushAudioBlock(sample);
+    if (m_waveformPanel->MeasureChannelStats(0).status != CalibrationSignalStatus::Good) return false;
+    m_waveformPanel->SetHold(true);
+    if (m_waveformPanel->MeasureChannelStats(0).status != CalibrationSignalStatus::NoSignal) return false;
+    m_waveformPanel->SetHold(false);
+    sample.firstOutputFrameIndex = 3;
+    m_waveformPanel->PushAudioBlock(sample);
+    if (m_waveformPanel->MeasureChannelStats(0).status != CalibrationSignalStatus::NoSignal) return false;
     return true;
 }
 
@@ -322,6 +342,9 @@ void MainFrame::InitUI() {
     playRow1->Add(m_btnExportWav, 0, wxALIGN_CENTER_VERTICAL, 0);
 
     playSizer->Add(playRow1, 0, wxEXPAND | wxALL, 3);
+    m_lblWavExportProgress = new wxStaticText(m_panelPlayback, wxID_ANY, wxEmptyString);
+    playSizer->Add(m_lblWavExportProgress, 0, wxEXPAND | wxLEFT | wxRIGHT, 3);
+    m_lblWavExportProgress->Hide();
 
     // 再生 2行目: トランスポート & 再生速度 & 再生位置
     auto* playRow2 = new wxBoxSizer(wxHORIZONTAL);
@@ -504,10 +527,7 @@ void MainFrame::ApplyLanguage() {
     if (m_lblPlayPosition) m_lblPlayPosition->SetLabel(TrWx(StringId::LabelPlayPosition));
     if (m_txtPlayTime) m_txtPlayTime->SetToolTip(TrWx(StringId::TipPlayPosition));
     if (m_btnSeekTime) m_btnSeekTime->SetLabel(TrWx(StringId::ButtonSeek));
-    if (m_btnExportWav) {
-        m_btnExportWav->SetLabel(TrWx(StringId::ButtonExportWav));
-        m_btnExportWav->SetToolTip(TrWx(StringId::TipExportWav));
-    }
+    UpdateWavExportProgress();
 
     // 波形オプション
     if (m_lblWaveOptSettings) m_lblWaveOptSettings->SetLabel(TrWx(StringId::LabelWaveformSettings));
@@ -843,10 +863,19 @@ void MainFrame::OnCalibrate(wxCommandEvent& /*event*/) {
         }
     }
 
-    CalibrationDialog dlg(this, m_waveformPanel, GetSelectedFullScaleVoltage(), GetSelectedChannelCount());
+    if (m_waveformPanel->IsHold()) {
+        wxMessageBox(TrWx(StringId::CalibrateResumeRequired), TrWx(StringId::CalibrateDialogTitle),
+                     wxOK | wxICON_WARNING, this);
+        return;
+    }
+    CalibrationDialog dlg(this, GetSelectedChannelCount(), [this](int channel) {
+        if (m_appState != AppState::Previewing || !m_audioMgr->IsStreaming() ||
+            m_audioMgr->HasDeviceError()) return SignalStats{};
+        return m_waveformPanel->MeasureChannelStats(channel);
+    });
     if (dlg.ShowModal() == wxID_OK) {
         double newVfs = dlg.GetCalculatedVfs();
-        m_txtVoltageScale->SetValue(wxString::Format(wxT("%.4f"), newVfs));
+        m_txtVoltageScale->SetValue(wxString::Format(wxT("%.17g"), newVfs));
         m_waveformPanel->SetFullScaleVoltage(newVfs);
 
         wxMessageBox(
@@ -1431,6 +1460,8 @@ bool MainFrame::WriteCompanionMetadata(const LoggerConfig& config, const DLogFil
 
     std::ofstream metaOut(tempPath, std::ios::out | std::ios::trunc);
     if (!metaOut.is_open()) return false;
+    metaOut.imbue(std::locale::classic());
+    metaOut << std::setprecision(std::numeric_limits<double>::max_digits10);
 
     metaOut << "[DLOG_METADATA]\n";
     metaOut << "magic=DLOG\n";
@@ -1663,6 +1694,10 @@ void MainFrame::UpdateControlStates() {
 }
 
 void MainFrame::OnTimer(wxTimerEvent& /*event*/) {
+    if (m_activeWavExportWorker) {
+        PollWavExport();
+        return;
+    }
     if (m_modeNotebook && m_modeNotebook->GetSelection() == 1) {
         // 再生モードの処理
         if (m_playbackLoader.IsOpen()) {
@@ -1672,11 +1707,11 @@ void MainFrame::OnTimer(wxTimerEvent& /*event*/) {
                 if (winData.hasError) {
                     m_isPlaying = false;
                     m_hasPlaybackError = true;
-                    m_playbackErrorMessage = winData.errorMessage;
+                    m_playbackError = std::move(winData.error);
                     UpdatePlaybackUI();
                 } else {
                     m_hasPlaybackError = false;
-                    m_playbackErrorMessage.clear();
+                    m_playbackError.Clear();
                     m_waveformPanel->SetPlaybackWindow(winData);
                     m_waveformPanel->Refresh(false);
                 }
@@ -1816,16 +1851,15 @@ void MainFrame::OnTimer(wxTimerEvent& /*event*/) {
 }
 
 void MainFrame::OnClose(wxCloseEvent& event) {
-    if (m_activeWavExportWorker && m_activeWavExportWorker->IsRunning()) {
-        int res = wxMessageBox(TrWx(StringId::WavExportConfirmCancel),
-                               TrWx(StringId::ConfirmDialogTitle), wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this);
-        if (res != wxYES) {
+    if (m_activeWavExportWorker) {
+        m_activeWavExportWorker->RequestCancel();
+        if (event.CanVeto()) {
+            m_closeAfterWavExport = true;
+            UpdateWavExportProgress();
             event.Veto();
             return;
         }
-        m_activeWavExportWorker->RequestCancel();
-        event.Veto();
-        return;
+        m_activeWavExportWorker.reset();
     }
 
     if (m_appState == AppState::Recording) {
@@ -1852,6 +1886,11 @@ void MainFrame::OnClose(wxCloseEvent& event) {
 void MainFrame::OnModeChanging(wxBookCtrlEvent& event) {
     if (m_isInitializing) return;
 
+    if (m_activeWavExportWorker) {
+        event.Veto();
+        return;
+    }
+
     if (m_appState == AppState::Recording) {
         wxMessageBox(TrWx(StringId::ErrCannotSwitchModeWhileRecording),
                      TrWx(StringId::WarningDialogTitle), wxOK | wxICON_WARNING, this);
@@ -1870,6 +1909,7 @@ void MainFrame::OnModeChanged(wxBookCtrlEvent& event) {
     if (!m_waveformPanel) return;
 
     int sel = event.GetSelection();
+    if (sel != 1 && m_lblOverruns) m_lblOverruns->SetToolTip(wxEmptyString);
     if (sel == 1) {
         // 再生モード
         m_waveformPanel->SetPlaybackMode(true);
@@ -1992,6 +2032,10 @@ void MainFrame::OnPlayOpenFile(wxCommandEvent& /*event*/) {
         return;
     }
 
+    if (m_playbackLoader.HasMetaWarning()) {
+        wxMessageBox(TrWx(StringId::WarnMetadataFallback), TrWx(StringId::WarningDialogTitle),
+                     wxOK | wxICON_WARNING, this);
+    }
     m_txtPlaybackFile->SetValue(path);
     m_waveformPanel->SetChannelCount(m_playbackLoader.GetChannels());
     m_waveformPanel->SetChannelMetadata(m_playbackLoader.GetChannelMetadata());
@@ -2110,7 +2154,7 @@ void MainFrame::PausePlayback() {
 void MainFrame::ResumePlayback() {
     if (!m_playbackLoader.IsOpen()) return;
     m_hasPlaybackError = false;
-    m_playbackErrorMessage.clear();
+    m_playbackError.Clear();
     double maxPos = CalculateMaxPosition(m_playbackLoader.GetTotalFrames(), m_playbackLoader.GetSampleRate());
     if (m_anchorPosition >= maxPos - 1e-6) {
         m_anchorPosition = 0.0;
@@ -2125,7 +2169,7 @@ void MainFrame::ResumePlayback() {
 void MainFrame::SeekPlaybackTo(double timeSec) {
     if (!m_playbackLoader.IsOpen()) return;
     m_hasPlaybackError = false;
-    m_playbackErrorMessage.clear();
+    m_playbackError.Clear();
     double maxPos = CalculateMaxPosition(m_playbackLoader.GetTotalFrames(), m_playbackLoader.GetSampleRate());
     timeSec = std::clamp(timeSec, 0.0, maxPos);
     m_anchorPosition = timeSec;
@@ -2159,13 +2203,13 @@ void MainFrame::RequestPlaybackWindow(double centerTimeSec, bool isNewEpoch) {
 void MainFrame::UpdatePlaybackUI() {
     bool opened = m_playbackLoader.IsOpen();
     m_btnPlayFirst->Enable(opened);
-    m_btnPlayPause->Enable(opened);
+    m_btnPlayPause->Enable(opened && !m_activeWavExportWorker);
     m_btnPlayLast->Enable(opened);
     m_choicePlaySpeed->Enable(opened);
     m_txtPlayTime->Enable(opened);
     m_btnSeekTime->Enable(opened);
     m_sliderPlayback->Enable(opened);
-    if (m_btnExportWav) m_btnExportWav->Enable(opened);
+    m_btnExportWav->Enable(m_activeWavExportWorker ? !m_activeWavExportWorker->IsCancelRequested() : opened);
 
     if (opened) {
         double curPos = GetCurrentPlaybackPosition();
@@ -2183,7 +2227,7 @@ void MainFrame::UpdatePlaybackUI() {
         if (m_hasPlaybackError) {
             m_btnPlayPause->SetLabel(TrWx(StringId::ButtonPlayStart));
             m_btnPlayPause->SetBackgroundColour(wxColour(30, 160, 60));
-            m_lblStatus->SetLabel(TrFormatWx(StringId::StatusErrorFormat, wxString::FromUTF8(m_playbackErrorMessage.c_str())));
+            m_lblStatus->SetLabel(TrFormatWx(StringId::StatusErrorFormat, wxString::FromUTF8(m_playbackError.FormatCurrent().c_str())));
             m_lblStatus->SetForegroundColour(wxColour(220, 40, 40));
         } else if (m_isPlaying) {
             m_btnPlayPause->SetLabel(TrWx(StringId::ButtonPlayPause));
@@ -2212,7 +2256,10 @@ void MainFrame::UpdatePlaybackUI() {
         } else {
             m_lblFileSize->SetLabel(TrFormatWx(StringId::FileSizeFormatMb, wxString::Format(wxT("%.2f"), mb)));
         }
-        m_lblOverruns->SetLabel(wxEmptyString);
+        const bool metaWarning = m_playbackLoader.HasMetaWarning();
+        m_lblOverruns->SetLabel(metaWarning ? TrWx(StringId::WarnMetadataFallbackShort) : wxString{});
+        m_lblOverruns->SetToolTip(metaWarning ? TrWx(StringId::WarnMetadataFallback) : wxString{});
+        m_lblOverruns->SetForegroundColour(wxColour(175, 95, 15));
         m_lblUiDrops->SetLabel(wxEmptyString);
     } else {
         m_btnPlayPause->SetLabel(TrWx(StringId::ButtonPlayStart));
@@ -2221,6 +2268,11 @@ void MainFrame::UpdatePlaybackUI() {
 }
 
 void MainFrame::OnPlayExportWav(wxCommandEvent& /*event*/) {
+    if (m_activeWavExportWorker) {
+        m_activeWavExportWorker->RequestCancel();
+        UpdateWavExportProgress();
+        return;
+    }
     if (!m_playbackLoader.IsOpen()) return;
 
     if (m_isPlaying) {
@@ -2238,87 +2290,69 @@ void MainFrame::OnPlayExportWav(wxCommandEvent& /*event*/) {
         return;
     }
 
-    WavExportOptions options = dlg.GetOptions();
-
-    WavExportWorker exportWorker;
-    m_activeWavExportWorker = &exportWorker;
-
-    struct WorkerGuard {
-        WavExportWorker*& target;
-        ~WorkerGuard() { target = nullptr; }
-    } guard{m_activeWavExportWorker};
-
-    wxProgressDialog progressDlg(
-        TrWx(StringId::WavExportProgressTitle),
-        wxEmptyString,
-        1000,
-        this,
-        wxPD_APP_MODAL | wxPD_AUTO_HIDE | wxPD_CAN_ABORT | wxPD_ELAPSED_TIME | wxPD_REMAINING_TIME
-    );
-
-    auto startTime = std::chrono::steady_clock::now();
-    bool started = exportWorker.Start(options);
-    if (!started) {
-        wxMessageBox(TrWx(StringId::ErrWavGeneral), TrWx(StringId::WavExportErrorTitle), wxOK | wxICON_ERROR, this);
+    auto worker = std::make_unique<WavExportWorker>();
+    if (!worker->Start(dlg.GetOptions())) {
+        const auto error = worker->GetError();
+        const wxString message = error.HasError() ? wxString::FromUTF8(error.FormatCurrent().c_str())
+                                                  : TrWx(StringId::ErrWavGeneral);
+        wxMessageBox(message, TrWx(StringId::WavExportErrorTitle), wxOK | wxICON_ERROR, this);
         return;
     }
 
-    bool userCancelConfirmed = false;
-    while (exportWorker.IsRunning()) {
-        wxMilliSleep(50);
-        wxTheApp->Yield();
+    m_exportStartedAt = std::chrono::steady_clock::now();
+    m_activeWavExportWorker = std::move(worker);
+    UpdateWavExportProgress();
+}
 
-        double progressRatio = exportWorker.GetProgress();
-        uint64_t processed = exportWorker.GetProcessedFrames();
-        uint64_t total = exportWorker.GetTotalFrames();
+void MainFrame::UpdateWavExportProgress() {
+    const bool exporting = m_activeWavExportWorker != nullptr;
+    const bool canceling = exporting && m_activeWavExportWorker->IsCancelRequested();
+    m_btnExportWav->SetLabel(TrWx(exporting ? StringId::WavExportCancelButton : StringId::ButtonExportWav));
+    m_btnExportWav->SetToolTip(TrWx(exporting ? StringId::WavExportCancelButton : StringId::TipExportWav));
+    m_btnExportWav->Enable(exporting ? !canceling : m_playbackLoader.IsOpen());
+    m_btnOpenPlaybackFile->Enable(!exporting);
+    m_btnPlayPause->Enable(!exporting && m_playbackLoader.IsOpen());
 
-        int permille = static_cast<int>(std::round(progressRatio * 1000.0));
-        permille = std::clamp(permille, 0, 999);
+    if (exporting) {
+        auto& worker = *m_activeWavExportWorker;
+        const double elapsed = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - m_exportStartedAt).count();
+        const double progress = worker.GetProgress();
+        const std::string eta = progress > 0.01 ? FormatPlaybackTime(elapsed * (1.0 / progress - 1.0)) : "--";
+        const auto percent = wxString::Format("%.1f", progress * 100.0);
+        m_lblWavExportProgress->SetLabel(canceling ? TrWx(StringId::WavExportCanceling) :
+            TrFormatWx(StringId::WavExportProgressMsgFormat, {
+                std::string(percent.utf8_str()), std::to_string(worker.GetProcessedFrames()),
+                std::to_string(worker.GetTotalFrames()), eta
+            }));
+    }
+    if (m_lblWavExportProgress->Show(exporting)) {
+        m_modeNotebook->InvalidateBestSize();
+        Layout();
+    }
+    m_panelPlayback->Layout();
+}
 
-        auto now = std::chrono::steady_clock::now();
-        double elapsedSec = std::chrono::duration<double>(now - startTime).count();
-        double etaSec = (progressRatio > 0.01) ? (elapsedSec / progressRatio - elapsedSec) : 0.0;
-        char etaBuf[32];
-        int etaM = static_cast<int>(etaSec) / 60;
-        int etaS = static_cast<int>(etaSec) % 60;
-        std::snprintf(etaBuf, sizeof(etaBuf), "%02d:%02d", etaM, etaS);
-
-        char pctBuf[16];
-        std::snprintf(pctBuf, sizeof(pctBuf), "%.1f", progressRatio * 100.0);
-
-        std::string progMsg = TrFormat(StringId::WavExportProgressMsgFormat, {
-            pctBuf,
-            std::to_string(processed),
-            std::to_string(total),
-            std::string(etaBuf)
-        });
-
-        bool keepGoing = progressDlg.Update(permille, wxString::FromUTF8(progMsg.c_str()));
-        if (!keepGoing && !userCancelConfirmed) {
-            int res = wxMessageBox(TrWx(StringId::WavExportConfirmCancel),
-                                   TrWx(StringId::ConfirmDialogTitle),
-                                   wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, &progressDlg);
-            if (res == wxYES) {
-                userCancelConfirmed = true;
-                exportWorker.RequestCancel();
-            } else {
-                progressDlg.Resume();
-            }
-        }
+void MainFrame::PollWavExport() {
+    if (m_activeWavExportWorker->IsRunning()) {
+        UpdateWavExportProgress();
+        return;
     }
 
-    exportWorker.Wait();
-    progressDlg.Update(1000);
-
-    auto endTime = std::chrono::steady_clock::now();
-    double totalElapsedSec = std::chrono::duration<double>(endTime - startTime).count();
-    char elapsedBuf[32];
-    int elM = static_cast<int>(totalElapsedSec) / 60;
-    int elS = static_cast<int>(totalElapsedSec) % 60;
-    std::snprintf(elapsedBuf, sizeof(elapsedBuf), "%02d:%02d", elM, elS);
-
-    WavExportResult result = exportWorker.GetResult();
-    LocalizedError error = exportWorker.GetError();
+    m_activeWavExportWorker->Wait();
+    const auto result = m_activeWavExportWorker->GetResult();
+    const auto error = m_activeWavExportWorker->GetError();
+    m_activeWavExportWorker.reset();
+    if (m_closeAfterWavExport) {
+        m_closeAfterWavExport = false;
+        Close();
+        return;
+    }
+    UpdateWavExportProgress();
+    UpdatePlaybackUI();
+    const auto elapsed = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - m_exportStartedAt).count();
+    const std::string elapsedText = FormatPlaybackTime(elapsed);
 
     if (result.canceled) {
         wxMessageBox(TrWx(StringId::WavExportCanceled), TrWx(StringId::InfoDialogTitle), wxOK | wxICON_INFORMATION, this);
@@ -2344,7 +2378,7 @@ void MainFrame::OnPlayExportWav(wxCommandEvent& /*event*/) {
             result.destinationPath,
             std::to_string(result.outputFramesWritten),
             std::string(szBuf),
-            std::string(elapsedBuf)
+            elapsedText
         });
         wxMessageBox(wxString::FromUTF8(successMsg.c_str()), TrWx(StringId::WavExportSuccessTitle), wxOK | wxICON_WARNING, this);
     } else {
@@ -2352,7 +2386,7 @@ void MainFrame::OnPlayExportWav(wxCommandEvent& /*event*/) {
             result.destinationPath,
             std::to_string(result.outputFramesWritten),
             std::string(szBuf),
-            std::string(elapsedBuf)
+            elapsedText
         });
         wxMessageBox(wxString::FromUTF8(successMsg.c_str()), TrWx(StringId::WavExportSuccessTitle), wxOK | wxICON_INFORMATION, this);
     }

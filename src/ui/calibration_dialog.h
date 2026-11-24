@@ -7,14 +7,14 @@
 #include <wx/textctrl.h>
 #include <wx/stattext.h>
 #include <wx/button.h>
-#include "ui/waveform_panel.h"
+#include <functional>
 #include "dsp/calibration_calculator.h"
 
 namespace dlog {
 
 class CalibrationDialog : public wxDialog {
 public:
-    CalibrationDialog(wxWindow* parent, WaveformPanel* waveformPanel, double currentVfs, int channelCount);
+    CalibrationDialog(wxWindow* parent, int channelCount, std::function<SignalStats(int)> measure);
     ~CalibrationDialog() override;
 
     double GetCalculatedVfs() const { return m_calculatedVfs; }
@@ -30,8 +30,7 @@ private:
 
     void UpdateCalculations();
 
-    WaveformPanel* m_waveformPanel = nullptr;
-    double m_currentVfs = 1.0;
+    std::function<SignalStats(int)> m_measure;
     int m_channelCount = 1;
 
     wxTimer m_timer;

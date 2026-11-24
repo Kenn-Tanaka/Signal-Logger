@@ -8,7 +8,8 @@ static constexpr double PI = 3.14159265358979323846;
 
 Interpolator::Interpolator() = default;
 
-void Interpolator::Initialize(int channels, uint32_t factor, InterpolationMethod method) {
+bool Interpolator::Initialize(int channels, uint32_t factor, InterpolationMethod method,
+                              const std::function<bool()>& isCanceled) {
     m_channels = std::max(1, channels);
     m_factor = std::max(1u, factor);
     m_method = method;
@@ -17,7 +18,7 @@ void Interpolator::Initialize(int channels, uint32_t factor, InterpolationMethod
         m_preMargin = 0;
         m_postMargin = 0;
         m_polyphaseTaps.clear();
-        return;
+        return true;
     }
 
     switch (m_method) {
@@ -35,20 +36,27 @@ void Interpolator::Initialize(int channels, uint32_t factor, InterpolationMethod
             m_firSemiLength = 4;
             m_preMargin = 3;  // m in [-3, 4] -> 3 past samples
             m_postMargin = 4; // 4 future samples
-            PrecomputeFirTaps();
-            break;
+            return PrecomputeFirTaps(isCanceled);
     }
+    return true;
 }
 
-void Interpolator::PrecomputeFirTaps() {
+bool Interpolator::PrecomputeFirTaps(const std::function<bool()>& isCanceled) {
     int P = m_firSemiLength;
     int numTaps = 2 * P; // 8 taps per phase (m = -3, -2, -1, 0, 1, 2, 3, 4)
-    m_polyphaseTaps.assign(m_factor, std::vector<float>(numTaps, 0.0f));
+    m_polyphaseTaps.clear();
+    if (isCanceled && isCanceled()) return false;
+    m_polyphaseTaps.reserve(m_factor);
+    std::vector<double> raw(numTaps);
 
     for (uint32_t s = 0; s < m_factor; ++s) {
+        if (s % 256 == 0 && isCanceled && isCanceled()) {
+            m_polyphaseTaps.clear();
+            return false;
+        }
+        auto& taps = m_polyphaseTaps.emplace_back(numTaps);
         double tau = static_cast<double>(s) / static_cast<double>(m_factor);
         double sumWeights = 0.0;
-        std::vector<double> raw(numTaps, 0.0);
 
         for (int tap = 0; tap < numTaps; ++tap) {
             int m = tap - (P - 1); // tap 0 -> m = -3, tap 3 -> m = 0, tap 7 -> m = 4
@@ -75,9 +83,10 @@ void Interpolator::PrecomputeFirTaps() {
         // DCゲイン正規化 (sum of weights = 1.0)
         double invSum = (std::abs(sumWeights) > 1e-12) ? (1.0 / sumWeights) : 1.0;
         for (int tap = 0; tap < numTaps; ++tap) {
-            m_polyphaseTaps[s][tap] = static_cast<float>(raw[tap] * invSum);
+            taps[tap] = static_cast<float>(raw[tap] * invSum);
         }
     }
+    return true;
 }
 
 bool Interpolator::ProcessFrames(const float* inputWithMargins, size_t inputFrameCount,

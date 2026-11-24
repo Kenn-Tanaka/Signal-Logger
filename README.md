@@ -64,7 +64,7 @@ Windows用の最大8チャネル信号ロガーです。PC用オーディオイ�
 （または `build.bat -Test`）
 
 - 実行ファイルは `build/` ディレクトリに生成されます（`build/DataLogger.exe`, `build/DlogToCsv.exe`）。
-- CTestにより3つのテストスイート（コアロジック、CSVコンバータ、GUI起動スモークテスト）が実行されます。
+- CTestにより、ロガー・CSV変換・WAV出力の3件と、両アプリの日英起動試験4件の計7件が実行されます。
 - 実機録音試験は通常実行しません。必要な場合のみ `-HardwareTests -Test` を指定します。
 
 ### 3. リリースパッケージの生成
@@ -100,4 +100,4 @@ Builder ZIPの検証は `scripts/test-clean-build.ps1 -BuilderZip <ZIPのパス>
 本プロジェクト固有のソースコードおよびドキュメントは、**MIT License** に基づき公開されます（ルートディレクトリの [LICENSE](LICENSE) 参照）。
 著作権表示：`Copyright (c) 2026 Kenichiro Tanaka`
 
-サードパーティライブラリ（wxWidgets, PortAudio, readerwriterqueue, concurrentqueue, GCCランタイム）のライセンス、著作権表示および例外条項については [LICENSES.md](LICENSES.md) および各ライセンスファイルを参照してください。
+サードパーティライブラリ（wxWidgets, PortAudio, readerwriterqueue, GCCランタイム）のライセンス、著作権表示および例外条項については [LICENSES.md](LICENSES.md) および各ライセンスファイルを参照してください。

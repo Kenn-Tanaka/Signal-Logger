@@ -25,6 +25,8 @@ Builder ZIPはプロジェクトのソース、テスト、固定依存定義、
 
 依存取得・ビルド・ハッシュ検査、アプリビルド、CTestを実行します。
 通常テストは実機録音しません。録音を伴う追加試験は `-HardwareTests -Test` を明示します。
+
+インストール済みの依存ライブラリでアプリだけをビルドする場合は `.\build.ps1 -UseInstalledDependencies -Test` を実行します。依存ビルダーを起動せず、固定revisionと成果物のハッシュを確認します。
 全テスト済みの来歴と一致するEXEだけをパッケージにできます。
 `-Offline` はソース・submodule・通知が揃ったキャッシュに限り利用可能です。
 `build.ps1 -Clean` は旧アプリビルドを退避します。`scripts/build-deps.ps1 -Clean` は新しい依存ビルド世代を作成します。

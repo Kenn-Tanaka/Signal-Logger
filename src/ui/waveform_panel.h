@@ -9,6 +9,7 @@
 #include <vector>
 #include <deque>
 #include <mutex>
+#include <chrono>
 
 namespace dlog {
 
@@ -62,11 +63,6 @@ public:
     SignalStats MeasureChannelStats(int channel, double durationSec = 1.0);
 
     /**
-     * @brief CAL信号校正用: 直近の波形データから指定チャネルの Peak-to-Peak 振幅 (0.0〜2.0) を測定
-     */
-    double MeasureChannelVpp(int channel, double durationSec = 1.0);
-
-    /**
      * @brief バッファのクリア
      */
     void Clear();
@@ -110,8 +106,6 @@ public:
     /**
      * @brief 時間軸基準ラベル（後方互換用）
      */
-    void SetTimeReferenceLabel(const wxString& label);
-    wxString GetTimeReferenceLabel() const;
 
     /**
      * @brief 再生モードの切り替え
@@ -144,7 +138,6 @@ private:
     bool m_isHold = false;        // 波形一時停止 (Hold) フラグ
     std::vector<ChannelMetadata> m_channelMetadata; // チャネル名・単位
     TimeReferenceMode m_timeRefMode = TimeReferenceMode::None; // 時間軸基準モード
-    wxString m_timeReferenceLabel;                  // 時間軸基準ラベル（例: "プレビュー開始から", "記録開始から"）
 
     bool m_isPlaybackMode = false;                  // 再生モードフラグ
     PlaybackWindowData m_playbackData;              // 再生用表示区間データ
@@ -155,6 +148,8 @@ private:
     std::vector<std::vector<float>> m_channelBuffers; // [ch][slot]
     uint64_t m_lastFrameIndex = 0; // 受信済み最新フレームのインデックス
     bool m_hasData = false;        // データが受信済みか（記録開始前・Clear直後はfalse）
+    std::chrono::steady_clock::time_point m_lastLiveUpdate{};
+    size_t m_contiguousLiveFrames = 0;
 
     mutable std::mutex m_bufferMutex; // UI描画とデータ供給の非ブロッキング排他
 

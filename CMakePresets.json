@@ -38,6 +38,9 @@
       "name": "test-smoke",
       "displayName": "Run Smoke Test",
       "configurePreset": "release",
+      "execution": {
+        "noTestsAction": "error"
+      },
       "filter": {
         "include": {
           "name": "Test.*Smoke(Ja|En)"

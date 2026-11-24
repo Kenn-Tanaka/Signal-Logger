@@ -48,6 +48,7 @@ void WaveformPanel::ReinitializeBuffersLocked() {
     m_channelBuffers.assign(m_channels, std::vector<float>(m_bufferCapacity, 0.0f));
     m_lastFrameIndex = 0;
     m_hasData = false;
+    m_contiguousLiveFrames = 0;
 }
 
 void WaveformPanel::SetSampleRate(double sampleRate) {
@@ -72,19 +73,21 @@ void WaveformPanel::SetVerticalGain(float gain) {
 
 void WaveformPanel::SetFullScaleVoltage(double vFs) {
     std::lock_guard<std::mutex> lock(m_bufferMutex);
-    m_fullScaleVoltage = std::max(0.0001, vFs);
+    if (std::isfinite(vFs) && vFs > 0.0) m_fullScaleVoltage = vFs;
     Refresh(false);
 }
 
 SignalStats WaveformPanel::MeasureChannelStats(int channel, double durationSec) {
     std::lock_guard<std::mutex> lock(m_bufferMutex);
     SignalStats emptyStats;
-    if (!m_hasData) return emptyStats;
+    if (!m_hasData || m_isHold || m_isPlaybackMode || m_sampleRate <= 0.0) return emptyStats;
     if (channel < 0 || channel >= static_cast<int>(m_channelBuffers.size())) return emptyStats;
     if (m_bufferCapacity == 0) return emptyStats;
 
-    size_t samplesToInspect = static_cast<size_t>(std::ceil(m_sampleRate * durationSec));
-    if (samplesToInspect == 0) return emptyStats;
+    size_t samplesToInspect = std::max<size_t>(2, static_cast<size_t>(std::ceil(m_sampleRate * durationSec)));
+    const auto maxAge = std::chrono::duration<double>(std::max(0.25, 2.0 / m_sampleRate));
+    if (m_contiguousLiveFrames < samplesToInspect ||
+        std::chrono::steady_clock::now() - m_lastLiveUpdate > maxAge) return emptyStats;
 
     uint64_t endFrame = m_lastFrameIndex;
     uint64_t startFrame = (endFrame + 1 >= samplesToInspect) ? (endFrame + 1 - samplesToInspect) : 0;
@@ -99,11 +102,11 @@ SignalStats WaveformPanel::MeasureChannelStats(int channel, double durationSec) 
         }
     }
 
+    if (sampleBuf.size() != samplesToInspect ||
+        !std::all_of(sampleBuf.begin(), sampleBuf.end(), [](float sample) { return std::isfinite(sample); })) {
+        return emptyStats;
+    }
     return CalibrationCalculator::AnalyzeSamples(sampleBuf.data(), sampleBuf.size());
-}
-
-double WaveformPanel::MeasureChannelVpp(int channel, double durationSec) {
-    return MeasureChannelStats(channel, durationSec).vpp;
 }
 
 void WaveformPanel::Clear() {
@@ -114,10 +117,13 @@ void WaveformPanel::Clear() {
     }
     m_lastFrameIndex = 0;
     m_hasData = false;
+    m_contiguousLiveFrames = 0;
     Refresh(false);
 }
 
 void WaveformPanel::SetHold(bool hold) {
+    std::lock_guard<std::mutex> lock(m_bufferMutex);
+    if (hold) m_contiguousLiveFrames = 0;
     m_isHold = hold;
     Refresh(false);
 }
@@ -132,24 +138,6 @@ void WaveformPanel::SetTimeReferenceMode(TimeReferenceMode mode) {
     std::lock_guard<std::mutex> lock(m_bufferMutex);
     m_timeRefMode = mode;
     Refresh(false);
-}
-
-void WaveformPanel::SetTimeReferenceLabel(const wxString& label) {
-    std::lock_guard<std::mutex> lock(m_bufferMutex);
-    m_timeReferenceLabel = label;
-    if (label.Contains(wxT("プレビュー")) || label.Lower().Contains(wxT("preview"))) {
-        m_timeRefMode = TimeReferenceMode::PreviewStart;
-    } else if (label.Contains(wxT("記録")) || label.Lower().Contains(wxT("record"))) {
-        m_timeRefMode = TimeReferenceMode::RecordStart;
-    } else if (label.IsEmpty()) {
-        m_timeRefMode = TimeReferenceMode::None;
-    }
-    Refresh(false);
-}
-
-wxString WaveformPanel::GetTimeReferenceLabel() const {
-    std::lock_guard<std::mutex> lock(m_bufferMutex);
-    return m_timeReferenceLabel;
 }
 
 void WaveformPanel::SetPlaybackMode(bool isPlayback) {
@@ -219,6 +207,11 @@ void WaveformPanel::PushAudioBlock(const AudioBlock& block) {
                 : 0.0f;
             m_channelBuffers[ch][slot] = val;
         }
+    }
+    if (startFrame != m_lastFrameIndex + 1 || channels != m_channels) m_contiguousLiveFrames = 0;
+    if (channels == m_channels) {
+        m_contiguousLiveFrames = std::min(m_bufferCapacity, m_contiguousLiveFrames + frames);
+        m_lastLiveUpdate = std::chrono::steady_clock::now();
     }
     m_lastFrameIndex = startFrame + frames - 1;
     m_hasData = true;
@@ -703,11 +696,7 @@ void WaveformPanel::OnPaint(wxPaintEvent& /*event*/) {
                     centerLabel = TrWx(StringId::CenterTimeRecord);
                     break;
                 default:
-                    if (!m_timeReferenceLabel.IsEmpty()) {
-                        centerLabel = wxString::Format(wxT("%s (%s)"), TrWx(StringId::CenterTimeDefault), m_timeReferenceLabel);
-                    } else {
-                        centerLabel = TrWx(StringId::CenterTimeDefault);
-                    }
+                    centerLabel = TrWx(StringId::CenterTimeDefault);
                     break;
                 }
             } else {

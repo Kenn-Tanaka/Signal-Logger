@@ -21,12 +21,19 @@ std::vector<ChannelMetadata> DlogReader::LoadCompanionMeta(const std::string& fi
     }
 
     std::string metaPath = filePath + ".meta";
+    const auto primary = std::filesystem::u8path(metaPath);
     std::ifstream in(std::filesystem::u8path(metaPath));
     if (!in.is_open()) {
-        size_t dot = filePath.find_last_of('.');
-        if (dot != std::string::npos) {
-            metaPath = filePath.substr(0, dot) + ".meta";
-            in.open(std::filesystem::u8path(metaPath));
+        std::error_code ec;
+        if (std::filesystem::exists(primary, ec) || ec) {
+            if (outWarning) *outWarning = "Companion metadata could not be opened.";
+            return meta;
+        }
+        auto legacy = std::filesystem::u8path(filePath);
+        legacy.replace_extension(".meta");
+        in.open(legacy);
+        if (!in.is_open() && (std::filesystem::exists(legacy, ec) || ec)) {
+            if (outWarning) *outWarning = "Companion metadata could not be opened.";
         }
     }
     if (!in.is_open()) {
@@ -230,13 +237,18 @@ std::vector<ChannelMetadata> DlogReader::LoadCompanionMeta(const std::string& fi
         }
     }
 
+    if (in.bad()) {
+        mismatchDetected = true;
+        mismatchReason = "読込エラー";
+    }
     if (!mismatchDetected) {
         if (header.version == DLOG_FORMAT_VERSION) {
             if (!hasDlogMetadataSection) {
                 mismatchDetected = true;
                 mismatchReason = "v2メタデータセクション欠落 ([DLOG_METADATA])";
             } else {
-                const char* requiredKeys[] = {"magic", "version", "channels", "native_rate", "start_timestamp_utc"};
+                const char* requiredKeys[] = {"magic", "version", "channels", "native_rate", "decimation_factor",
+                                              "full_scale_voltage", "start_timestamp_utc"};
                 for (const char* reqKey : requiredKeys) {
                     if (seenMetaKeys.count(reqKey) == 0) {
                         mismatchDetected = true;
@@ -466,6 +478,8 @@ bool DlogReader::ReadFrames(uint64_t startFrame, size_t frameCount, std::vector<
 bool DlogReader::InspectFile(const std::string& filePath, BatchItem& item) {
     item.inputFilePath = filePath;
     item.isValidHeader = false;
+    item.hasMetaWarning = false;
+    item.error.Clear();
 
     // ファイル名抽出
     size_t slash = filePath.find_last_of("/\\");
@@ -475,14 +489,12 @@ bool DlogReader::InspectFile(const std::string& filePath, BatchItem& item) {
     if (!reader.Open(filePath)) {
         item.status = BatchStatus::Error;
         item.error = reader.GetLastErrorInfo();
-        item.errorMessage = reader.GetLastError().empty()
-            ? "無効なDLOGファイルまたは開けません"
-            : reader.GetLastError();
         return false;
     }
 
     item.header = reader.GetHeader();
     item.channelMetadata = reader.GetChannelMetadata();
+    item.hasMetaWarning = !reader.GetMetaWarning().empty();
     item.fileSizeBytes = reader.GetFileSize();
     item.totalFrames = reader.GetTotalFrames();
     item.durationSec = reader.GetDurationSec();

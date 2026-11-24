@@ -82,6 +82,8 @@ private:
     void OnPlayTimeEnter(wxCommandEvent& event);
     void OnPlaySeek(wxCommandEvent& event);
     void OnPlayExportWav(wxCommandEvent& event);
+    void UpdateWavExportProgress();
+    void PollWavExport();
     void OnPlaySliderThumbTrack(wxScrollEvent& event);
     void OnPlaySliderThumbRelease(wxScrollEvent& event);
     void OnPlaySliderScroll(wxScrollEvent& event);
@@ -142,7 +144,10 @@ private:
     wxTextCtrl* m_txtPlaybackFile = nullptr;
     wxButton* m_btnOpenPlaybackFile = nullptr;
     wxButton* m_btnExportWav = nullptr;
-    WavExportWorker* m_activeWavExportWorker = nullptr;
+    std::unique_ptr<WavExportWorker> m_activeWavExportWorker;
+    std::chrono::steady_clock::time_point m_exportStartedAt;
+    wxStaticText* m_lblWavExportProgress = nullptr;
+    bool m_closeAfterWavExport = false;
     wxButton* m_btnPlayFirst = nullptr;
     wxButton* m_btnPlayPause = nullptr;
     wxButton* m_btnPlayLast = nullptr;
@@ -165,7 +170,7 @@ private:
     double m_lastRequestedCenterTime = -1.0;
     int m_lastRequestedPixelWidth = -1;
     bool m_hasPlaybackError = false;
-    std::string m_playbackErrorMessage;
+    LocalizedError m_playbackError;
 
     // 波形描画オプションコントロール
     wxBoxSizer* m_waveOptSizer = nullptr;

@@ -19,8 +19,5 @@ try {
     & "$PSScriptRoot/test-packaging.ps1" -Directory $stage -Kind Builder
     Complete-Package $stage (Join-Path $OutputDir "DataLogger-v$Version-builder.zip")
 } finally {
-    if (Test-Path -LiteralPath $stage) {
-        $safeStage = Assert-SafeDirectoryPath $stage $OutputDir
-        Remove-Item -LiteralPath $safeStage -Recurse -Force
-    }
+    Remove-PackageStage $stage $OutputDir
 }

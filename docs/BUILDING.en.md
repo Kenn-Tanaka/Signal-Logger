@@ -24,6 +24,8 @@ No global environment modifications or automatic tool installations are performe
 
 Executes dependency fetching, build, hash verification, application build, and CTest.
 Standard test runs do not record from physical hardware. To include hardware recording tests, pass `-HardwareTests -Test`.
+
+To build the apps using installed dependencies, run `.\build.ps1 -UseInstalledDependencies -Test`. This skips the dependency builder and verifies pinned revisions and artifact hashes.
 Only executables that match fully tested history can be packaged.
 `-Offline` can only be used once all sources, submodules, and notices are cached locally.
 `build.ps1 -Clean` archives the previous application build directory. `scripts/build-deps.ps1 -Clean` creates a new dependency build generation.
@@ -37,7 +39,7 @@ Does not recursively delete existing data or old dependency installs; maintenanc
 ```
 
 - `DataLogger-v2.0.0-builder.zip`: For development and building. Contains SPEC and developer guidelines.
-- `DataLogger-v2.0.0-win64.zip`: Executables, user documentation, license notices, and change history. Excludes SPEC and developer guidelines.
+- `DataLogger-v2.0.0-win64.zip`: Executables, user documentation, license notices, and build provenance. Excludes SPEC and developer guidelines.
 
 Halts without overwriting if a ZIP with the same name already exists. Specify a different `-OutputDir` or version string to regenerate.
 

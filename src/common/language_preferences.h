@@ -3,6 +3,7 @@
 #include "common/ui_language.h"
 #include <string>
 #include <atomic>
+#include <mutex>
 
 namespace dlog {
 
@@ -70,6 +71,8 @@ public:
     static void ResetForTesting();
 
 private:
+    static void InitializeLocked(const std::string& cliLanguageOverride);
+    static std::mutex s_stateMutex;
     static std::atomic<Language> s_currentLanguage;
     static bool s_hasCliOverride;
     static std::atomic<bool> s_initialized;

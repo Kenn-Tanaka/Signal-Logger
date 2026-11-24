@@ -354,7 +354,8 @@ bool CsvWriter::WriteRow(uint64_t frameIndex, const float* samples, int channelC
         }
     }
 
-    char numBuf[32];
+    // A finite double in fixed notation can require over 300 characters.
+    char numBuf[384];
     bool firstCol = true;
 
     if (m_options.timeFormat != TimeFormat::None) {
@@ -381,7 +382,17 @@ bool CsvWriter::WriteRow(uint64_t frameIndex, const float* samples, int channelC
             val = samples[chIdx];
         }
         double finalVal = (m_options.applyVoltageScale) ? (static_cast<double>(val) * vScale) : static_cast<double>(val);
-        std::snprintf(numBuf, sizeof(numBuf), m_floatFormat.c_str(), finalVal);
+        if (!std::isfinite(finalVal)) {
+            m_lastError = "CSV value is not finite after voltage scaling.";
+            m_hasError = true;
+            return false;
+        }
+        int formatted = std::snprintf(numBuf, sizeof(numBuf), m_floatFormat.c_str(), finalVal);
+        if (formatted < 0 || static_cast<size_t>(formatted) >= sizeof(numBuf)) {
+            m_lastError = "CSV numeric value exceeds the supported output width.";
+            m_hasError = true;
+            return false;
+        }
         m_fileStream << numBuf;
         firstCol = false;
     }

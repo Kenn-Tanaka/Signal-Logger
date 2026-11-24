@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <limits>
 #include <windows.h>
 
 namespace dlog {
@@ -132,7 +133,12 @@ bool WavWriter::WriteHeaderPlaceholder(std::string& outError) {
     uint16_t bitsPerSample = (m_format == WavSampleFormat::IeeeFloat32) ? 32 : 16;
     uint16_t bytesPerSample = bitsPerSample / 8;
     uint16_t blockAlign = static_cast<uint16_t>(m_channels * bytesPerSample);
-    uint32_t avgBytesPerSec = m_sampleRate * static_cast<uint32_t>(blockAlign);
+    const uint64_t avgBytesPerSec64 = static_cast<uint64_t>(m_sampleRate) * blockAlign;
+    if (avgBytesPerSec64 > std::numeric_limits<uint32_t>::max()) {
+        outError = "WAV byte rate exceeds the format limit.";
+        return false;
+    }
+    uint32_t avgBytesPerSec = static_cast<uint32_t>(avgBytesPerSec64);
 
     // 1. RIFF / RF64 ヘッダ
     if (m_container == WavContainerFormat::Rf64) {
@@ -225,6 +231,13 @@ bool WavWriter::WriteFrames(const float* samples, size_t frameCount, std::string
     size_t totalSamples = frameCount * static_cast<size_t>(m_channels);
 
     if (m_format == WavSampleFormat::IeeeFloat32) {
+        // WAVへ非有限値を書き出すと異常データが成功扱いになるため拒否する。
+        for (size_t i = 0; i < totalSamples; ++i) {
+            if (!std::isfinite(samples[i])) {
+                outError = "Non-finite sample (NaN or Infinity) detected during Float32 export.";
+                return false;
+            }
+        }
         // Float32: バイト列を直接書き込み
         const char* rawBytes = reinterpret_cast<const char*>(samples);
         size_t bytesToWrite = totalSamples * sizeof(float);

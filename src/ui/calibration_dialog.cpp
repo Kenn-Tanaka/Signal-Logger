@@ -129,6 +129,16 @@ void CalibrationDialog::OnChannelSelected(wxCommandEvent& /*event*/) {
 void CalibrationDialog::UpdateCalculations() {
     if (!m_waveformPanel) return;
 
+    if (m_waveformPanel->IsHold()) {
+        m_measuredVpp = 0.0;
+        if (m_lblStatus) m_lblStatus->SetLabel(TrWx(StringId::CalibrateStatusNoSignal));
+        if (m_lblCalculatedVfs) {
+            m_lblCalculatedVfs->SetLabel(wxT("-- (") + TrWx(StringId::CalibrateStatusNoSignal) + wxT(")"));
+        }
+        if (m_btnApply) m_btnApply->Enable(false);
+        return;
+    }
+
     // 1. 直近1.0秒間の信号統計を取得
     SignalStats stats = m_waveformPanel->MeasureChannelStats(m_selectedChannel, 1.0);
     m_measuredVpp = stats.vpp;
@@ -216,7 +226,11 @@ void CalibrationDialog::OnApply(wxCommandEvent& /*event*/) {
     }
 
     SignalStats stats = m_waveformPanel ? m_waveformPanel->MeasureChannelStats(m_selectedChannel, 1.0) : SignalStats{};
-    if (stats.vpp < 0.01) {
+    if (m_waveformPanel && m_waveformPanel->IsHold()) {
+        wxMessageBox(TrWx(StringId::CalibrateStatusNoSignal), TrWx(StringId::CalibrateErrorTitle), wxOK | wxICON_WARNING, this);
+        return;
+    }
+    if (stats.status == CalibrationSignalStatus::Clipping || stats.vpp < 0.01) {
         wxMessageBox(
             TrFormatWx(StringId::ErrCalibratePrompt, wxString::Format(wxT("%.4f"), stats.vpp)),
             TrWx(StringId::CalibrateErrorTitle), wxOK | wxICON_WARNING, this

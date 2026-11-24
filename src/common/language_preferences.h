@@ -2,6 +2,7 @@
 
 #include "common/ui_language.h"
 #include <string>
+#include <atomic>
 
 namespace dlog {
 
@@ -69,9 +70,9 @@ public:
     static void ResetForTesting();
 
 private:
-    static Language s_currentLanguage;
+    static std::atomic<Language> s_currentLanguage;
     static bool s_hasCliOverride;
-    static bool s_initialized;
+    static std::atomic<bool> s_initialized;
     static std::string s_customSettingsPath;
 };
 

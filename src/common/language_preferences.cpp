@@ -19,9 +19,9 @@
 
 namespace dlog {
 
-Language LanguagePreferences::s_currentLanguage = Language::English;
+std::atomic<Language> LanguagePreferences::s_currentLanguage{Language::English};
 bool LanguagePreferences::s_hasCliOverride = false;
-bool LanguagePreferences::s_initialized = false;
+std::atomic<bool> LanguagePreferences::s_initialized{false};
 std::string LanguagePreferences::s_customSettingsPath;
 
 void LanguagePreferences::Initialize(const std::string& cliLanguageOverride) {
@@ -43,10 +43,10 @@ void LanguagePreferences::Initialize(const std::string& cliLanguageOverride) {
 }
 
 Language LanguagePreferences::GetCurrentLanguage() {
-    if (!s_initialized) {
+    if (!s_initialized.load(std::memory_order_acquire)) {
         Initialize();
     }
-    return s_currentLanguage;
+    return s_currentLanguage.load(std::memory_order_acquire);
 }
 
 bool LanguagePreferences::SetCurrentLanguage(Language lang, bool persistToDisk, std::string* outError) {

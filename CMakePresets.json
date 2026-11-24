@@ -40,7 +40,7 @@
       "configurePreset": "release",
       "filter": {
         "include": {
-          "name": "TestSmokeTest"
+          "name": "Test.*Smoke(Ja|En)"
         }
       },
       "output": {

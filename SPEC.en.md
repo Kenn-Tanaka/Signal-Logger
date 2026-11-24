@@ -145,10 +145,10 @@ Exports the verified DLOG file currently open in the "Recorded Waveform Playback
    - **Filter Length**: Semi-length $P = 4$ ($2P = 8$ taps per polyphase branch).
    - **Cutoff Frequency**: $f_c = 0.5 / N$.
    - **DC Gain**: Normalized so the sum of tap weights for each subphase branch equals 1.0 (guaranteeing 0 dB DC ripple).
-   - **Sinc Zero-Crossing**: At subphase $s = 0$, $h_0[0] = 1.0$ and all other taps are $0.0$, reproducing raw samples bit-identically at input sample grid points.
+   - **Sinc Zero-Crossing**: The phase corresponding to an input sample time theoretically reproduces that input value; floating-point arithmetic may introduce a very small error.
    - **Boundary Handling**: Clamped endpoint padding (pre-margin $P-1 = 3$ frames, post-margin $P = 4$ frames).
    - **Delay Compensation**: Zero-phase centering ensures no filter group delay is introduced to output timestamps or frame counts.
-   - **Bounded Memory**: Small-chunk streaming (max 4096 output frames/chunk) bounds memory footprint to $\le 500$ KB regardless of factor $N$.
+   - **Memory Use**: Output samples are processed in chunks of at most 4096 frames. All polyphase coefficients are retained after initialization; coefficient payload alone uses at least $32N$ bytes. Container and allocator overhead adds to this, so total memory grows with interpolation factor $N$.
    - **State Retention**: Retains per-channel and inter-chunk filter history across streaming blocks to prevent waveform discontinuities at chunk boundaries.
    - **Notice**: May introduce subtle ringing or overshoot near steep transition edges. Automatically disabled if decimation factor $N = 1$ (no interpolation required).
 
